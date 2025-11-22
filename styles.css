@@ -1,0 +1,267 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    overflow: hidden;
+    background: #0a0a0a;
+    color: #e0e0e0;
+}
+
+#app {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    cursor: grab;
+}
+
+#app:active {
+    cursor: grabbing;
+}
+
+#main-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+#node-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.node {
+    position: absolute;
+    pointer-events: all;
+    border-radius: 8px;
+    background: #1a1a1a;
+    border: 2px solid #333;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    transition: box-shadow 0.2s;
+    min-width: 200px;
+    min-height: 100px;
+}
+
+.node:hover {
+    border-color: #555;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.7);
+}
+
+.node.selected {
+    border-color: #4a9eff;
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.3);
+}
+
+.node-header {
+    padding: 8px 12px;
+    background: #252525;
+    border-bottom: 1px solid #333;
+    border-radius: 6px 6px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+    user-select: none;
+}
+
+.node-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: #fff;
+}
+
+.node-type {
+    font-size: 11px;
+    color: #888;
+    text-transform: uppercase;
+}
+
+.node-content {
+    padding: 12px;
+}
+
+/* Texture Buffer Node */
+.texture-buffer-node {
+    display: flex;
+    flex-direction: column;
+}
+
+.texture-preview-container {
+    width: 100%;
+    height: 200px;
+    background: #0f0f0f;
+    border: 1px solid #333;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 8px;
+}
+
+.texture-preview-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+}
+
+.texture-info {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    color: #aaa;
+}
+
+.texture-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.btn {
+    padding: 6px 12px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.btn:hover {
+    background: #333;
+    border-color: #555;
+}
+
+.btn:active {
+    background: #2a2a2a;
+}
+
+/* Shader Node */
+.shader-node {
+    display: flex;
+    flex-direction: column;
+}
+
+.shader-header-code {
+    background: #0f0f0f;
+    padding: 8px 12px;
+    border-bottom: 1px solid #333;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #888;
+    white-space: pre;
+    user-select: none;
+}
+
+.shader-editor-container {
+    position: relative;
+    min-height: 300px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.shader-editor {
+    width: 100%;
+    height: 100%;
+}
+
+.resize-handle {
+    position: absolute;
+    background: #4a9eff;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.node:hover .resize-handle {
+    opacity: 0.3;
+}
+
+.resize-handle:hover {
+    opacity: 0.6;
+}
+
+.resize-handle.se {
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    cursor: nwse-resize;
+}
+
+.resize-handle.s {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    cursor: ns-resize;
+}
+
+.resize-handle.e {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 4px;
+    cursor: ew-resize;
+}
+
+/* Ports */
+.port {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #2a2a2a;
+    border: 2px solid #555;
+    cursor: pointer;
+    transition: all 0.2s;
+    z-index: 10;
+}
+
+.port:hover {
+    background: #3a3a3a;
+    border-color: #4a9eff;
+    transform: scale(1.2);
+}
+
+.port.input {
+    left: -8px;
+}
+
+.port.output {
+    right: -8px;
+}
+
+.port.connected {
+    background: #4a9eff;
+    border-color: #6bb6ff;
+}
+
+/* Connection lines */
+.connection-line {
+    position: absolute;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.connection-line svg {
+    width: 100%;
+    height: 100%;
+}
+
