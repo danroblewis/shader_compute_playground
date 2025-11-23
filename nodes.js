@@ -109,13 +109,12 @@ class TextureBufferNode extends Node {
         div.innerHTML = `
             <div class="node-header">
                 <span class="node-title" contenteditable="true" data-node-title="${this.id}">${this.name}</span>
-                <span class="node-type">Buffer</span>
+                <span class="node-type fps-display">FPS: 0</span>
             </div>
             <div class="node-content texture-buffer-node">
                 <div class="texture-preview-container">
                     <canvas class="texture-preview-canvas"></canvas>
                     <div class="texture-info">${this.textureWidth}×${this.textureHeight}</div>
-                    <div class="fps-display">FPS: 0</div>
                 </div>
                 <div class="texture-controls">
                     <button class="btn" data-action="clear">Clear</button>
