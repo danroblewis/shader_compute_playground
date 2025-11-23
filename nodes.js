@@ -558,21 +558,6 @@ class ShaderNode extends Node {
                     automaticLayout: true
                 });
 
-                // Add comment keybindings
-                this.monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
-                    const action = this.monacoEditor.getAction('editor.action.commentLine');
-                    if (action) {
-                        action.run();
-                    }
-                });
-                
-                this.monacoEditor.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyA, () => {
-                    const action = this.monacoEditor.getAction('editor.action.blockComment');
-                    if (action) {
-                        action.run();
-                    }
-                });
-
                 this.code = this.monacoEditor.getValue();
 
                 this.monacoEditor.onDidChangeModelContent(() => {

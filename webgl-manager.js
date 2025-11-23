@@ -213,9 +213,23 @@ class WebGLManager {
 
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, texture);
+        
+        // Use nearest-neighbor filtering for pixelated rendering
+        // Save current filter settings
+        const currentMinFilter = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER);
+        const currentMagFilter = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER);
+        
+        // Set to nearest for crisp pixel rendering
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        
         gl.uniform1i(gl.getUniformLocation(program, 'u_texture'), 0);
-
+        
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Restore original filter settings
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, currentMinFilter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, currentMagFilter);
         
         // Read pixels and draw to 2D canvas
         const pixels = new Uint8Array(width * height * 4);
