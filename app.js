@@ -13,6 +13,9 @@ class App {
         this.dragging = false;
         this.dragOffset = { x: 0, y: 0 };
         this.connectionLine = null;
+        this.panning = false;
+        this.panStart = { x: 0, y: 0 };
+        this.panOffset = { x: 0, y: 0 };
         
         this.nodeIdCounter = 0;
         this.textureBufferCounter = 0;
@@ -46,7 +49,7 @@ class App {
         document.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
         document.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
         
-        // Stop dragging if mouse leaves window
+        // Stop dragging/panning if mouse leaves window
         window.addEventListener('mouseleave', (e) => {
             if (this.dragging) {
                 this.dragging = false;
@@ -54,6 +57,10 @@ class App {
                     this.selectedNode.particle.vx = 0;
                     this.selectedNode.particle.vy = 0;
                 }
+            }
+            if (this.panning) {
+                this.panning = false;
+                this.canvas.style.cursor = '';
             }
         });
         
@@ -631,7 +638,21 @@ class App {
                 this.showContextMenu(e.clientX, e.clientY);
             }
         } else if (e.button === 0) { // Left click
-            if (!this.dragging) {
+            // Check if clicking on background (not on a node or port)
+            const clickedNode = this.nodes.find(node => {
+                const rect = node.element.getBoundingClientRect();
+                return e.clientX >= rect.left && e.clientX <= rect.right &&
+                       e.clientY >= rect.top && e.clientY <= rect.bottom;
+            });
+            
+            if (!clickedNode && !this.connectingFrom) {
+                // Start panning
+                this.panning = true;
+                this.panStart.x = e.clientX;
+                this.panStart.y = e.clientY;
+                this.canvas.style.cursor = 'grabbing';
+                e.preventDefault();
+            } else if (!this.dragging) {
                 this.selectedNode = null;
                 this.nodes.forEach(n => n.element.classList.remove('selected'));
             }
@@ -661,6 +682,22 @@ class App {
             }
         }
 
+        // Handle panning
+        if (this.panning) {
+            const dx = e.clientX - this.panStart.x;
+            const dy = e.clientY - this.panStart.y;
+            
+            // Move all nodes
+            this.nodes.forEach(node => {
+                node.particle.x += dx;
+                node.particle.y += dy;
+            });
+            
+            // Update pan start for next move
+            this.panStart.x = e.clientX;
+            this.panStart.y = e.clientY;
+        }
+
         // Handle dragging
         if (this.dragging && this.selectedNode) {
             const node = this.selectedNode;
@@ -668,6 +705,20 @@ class App {
             node.particle.y = e.clientY - this.dragOffset.y;
             node.particle.vx = 0;
             node.particle.vy = 0;
+        }
+        
+        // Update cursor style when hovering over background
+        if (!this.panning && !this.dragging && !this.connectingFrom) {
+            const hoveredNode = this.nodes.find(node => {
+                const rect = node.element.getBoundingClientRect();
+                return e.clientX >= rect.left && e.clientX <= rect.right &&
+                       e.clientY >= rect.top && e.clientY <= rect.bottom;
+            });
+            if (!hoveredNode) {
+                this.canvas.style.cursor = 'grab';
+            } else {
+                this.canvas.style.cursor = '';
+            }
         }
     }
 
@@ -680,6 +731,12 @@ class App {
                 this.selectedNode.particle.vy = 0;
             }
         }
+        
+        if (this.panning) {
+            this.panning = false;
+            this.canvas.style.cursor = '';
+        }
+        
         // Don't cancel connection on canvas mouseup - let port mouseup handle it
         // Only cancel if clicking on canvas (not on a port)
         if (this.connectingFrom && e.button === 0 && !e.target.closest('.port')) {
