@@ -9,6 +9,11 @@ class Node {
         this.inputs = [];
         this.outputs = [];
         this.connections = [];
+        // Cache last rendered position to avoid unnecessary style updates
+        this.lastRenderedX = null;
+        this.lastRenderedY = null;
+        this.lastRenderedWidth = null;
+        this.lastRenderedHeight = null;
     }
 
     createElement() {
@@ -23,10 +28,34 @@ class Node {
         if (this.element && this.particle) {
             const x = this.particle.x - this.particle.width / 2;
             const y = this.particle.y - this.particle.height / 2;
-            this.element.style.left = `${x}px`;
-            this.element.style.top = `${y}px`;
-            this.element.style.width = `${this.particle.width}px`;
-            this.element.style.height = `${this.particle.height}px`;
+            const width = this.particle.width;
+            const height = this.particle.height;
+            
+            // Only update styles if position/size changed significantly (avoid sub-pixel updates)
+            const threshold = 0.5;
+            const xChanged = this.lastRenderedX === null || Math.abs(x - this.lastRenderedX) >= threshold;
+            const yChanged = this.lastRenderedY === null || Math.abs(y - this.lastRenderedY) >= threshold;
+            const widthChanged = this.lastRenderedWidth === null || Math.abs(width - this.lastRenderedWidth) >= threshold;
+            const heightChanged = this.lastRenderedHeight === null || Math.abs(height - this.lastRenderedHeight) >= threshold;
+            
+            if (xChanged || yChanged || widthChanged || heightChanged) {
+                if (xChanged) {
+                    this.element.style.left = `${x}px`;
+                    this.lastRenderedX = x;
+                }
+                if (yChanged) {
+                    this.element.style.top = `${y}px`;
+                    this.lastRenderedY = y;
+                }
+                if (widthChanged) {
+                    this.element.style.width = `${width}px`;
+                    this.lastRenderedWidth = width;
+                }
+                if (heightChanged) {
+                    this.element.style.height = `${height}px`;
+                    this.lastRenderedHeight = height;
+                }
+            }
         }
     }
 
@@ -58,6 +87,11 @@ class TextureBufferNode extends Node {
         this.drawContext = null;
         this.name = name;
         
+        // FPS tracking for preview updates
+        this.previewFps = 0;
+        this.previewFrameCount = 0;
+        this.lastPreviewFpsUpdate = performance.now();
+        
         // Set proper size for texture buffer node (needs space for header, preview, and controls)
         // Header: ~40px, Preview: 200px, Controls: ~40px, Padding: 24px = ~304px minimum
         this.setSize(200, 320);
@@ -81,15 +115,18 @@ class TextureBufferNode extends Node {
                 <div class="texture-preview-container">
                     <canvas class="texture-preview-canvas"></canvas>
                     <div class="texture-info">${this.textureWidth}×${this.textureHeight}</div>
+                    <div class="fps-display">FPS: 0</div>
                 </div>
                 <div class="texture-controls">
                     <button class="btn" data-action="clear">Clear</button>
+                    <button class="btn" data-action="random">Random</button>
                     <button class="btn" data-action="resize">Resize</button>
                 </div>
             </div>
         `;
 
         this.previewCanvas = div.querySelector('.texture-preview-canvas');
+        this.fpsDisplay = div.querySelector('.fps-display');
         // Set canvas size to match container (will be updated after container is rendered and on resize)
         this.updateCanvasSize = () => {
             const container = this.previewCanvas.parentElement;
@@ -145,6 +182,7 @@ class TextureBufferNode extends Node {
 
         // Event listeners
         div.querySelector('[data-action="clear"]').addEventListener('click', () => this.clear());
+        div.querySelector('[data-action="random"]').addEventListener('click', () => this.randomize());
         div.querySelector('[data-action="resize"]').addEventListener('click', () => this.promptResize());
 
         // Make title editable
@@ -206,8 +244,8 @@ class TextureBufferNode extends Node {
         if (!this.previewCanvas) return;
 
         const canvas = this.previewCanvas;
-        const ctx = canvas.getContext('2d');
-        this.drawContext = ctx;
+        // No longer need 2D context - drawing is done directly to WebGL texture
+        // Canvas will use WebGL context for preview rendering
 
         canvas.addEventListener('mousedown', (e) => {
             if (this.physics.particles.some(p => Math.abs(p.vx) < 0.1 && Math.abs(p.vy) < 0.1)) {
@@ -299,6 +337,28 @@ class TextureBufferNode extends Node {
         }
     }
 
+    randomize() {
+        const gl = this.webglManager.gl;
+        const data = new Uint8Array(this.textureWidth * this.textureHeight * 4);
+        
+        // Fill with random RGBA values
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = Math.floor(Math.random() * 256);     // R
+            data[i + 1] = Math.floor(Math.random() * 256); // G
+            data[i + 2] = Math.floor(Math.random() * 256); // B
+            data[i + 3] = 255;                              // A (fully opaque)
+        }
+        
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.textureWidth, this.textureHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        this.updatePreview();
+        
+        // Save state after randomize
+        if (window.app) {
+            window.app.saveState();
+        }
+    }
+
     promptResize() {
         const width = prompt('Width:', this.textureWidth);
         const height = prompt('Height:', this.textureHeight);
@@ -376,6 +436,22 @@ class TextureBufferNode extends Node {
     updatePreview() {
         if (this.previewCanvas) {
             this.webglManager.renderTextureToCanvas(this.texture, this.previewCanvas, this.textureWidth, this.textureHeight);
+            
+            // Update FPS tracking for this preview
+            this.previewFrameCount++;
+            const now = performance.now();
+            const elapsed = now - this.lastPreviewFpsUpdate;
+            
+            if (elapsed >= 1000) { // Update FPS every second
+                this.previewFps = Math.round((this.previewFrameCount * 1000) / elapsed);
+                this.previewFrameCount = 0;
+                this.lastPreviewFpsUpdate = now;
+                
+                // Update FPS display
+                if (this.fpsDisplay) {
+                    this.fpsDisplay.textContent = `FPS: ${this.previewFps}`;
+                }
+            }
         }
     }
 
@@ -1125,8 +1201,23 @@ class PaletteNode extends Node {
         if (this.element && this.particle) {
             const x = this.particle.x - this.particle.width / 2;
             const y = this.particle.y - this.particle.height / 2;
-            this.element.style.left = `${x}px`;
-            this.element.style.top = `${y}px`;
+            
+            // Only update styles if position changed significantly (avoid sub-pixel updates)
+            const threshold = 0.5;
+            const xChanged = this.lastRenderedX === null || Math.abs(x - this.lastRenderedX) >= threshold;
+            const yChanged = this.lastRenderedY === null || Math.abs(y - this.lastRenderedY) >= threshold;
+            
+            if (xChanged || yChanged) {
+                if (xChanged) {
+                    this.element.style.left = `${x}px`;
+                    this.lastRenderedX = x;
+                }
+                if (yChanged) {
+                    this.element.style.top = `${y}px`;
+                    this.lastRenderedY = y;
+                }
+            }
+            
             // Set width from physics, but don't set min-width or height - let content determine it naturally
             // this.element.style.width = `${this.particle.width}px`;
             this.element.style.height = '';

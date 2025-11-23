@@ -26,6 +26,7 @@ class App {
         this.iteration = 0;
         this.paused = false;
         this.paletteNode = null;
+        this.connectionsNeedUpdate = true; // Track if connections need visual update
         
         // FPS tracking
         this.fps = 0;
@@ -92,31 +93,12 @@ class App {
     }
 
     createPauseButton() {
-        // Create container for FPS and pause button
+        // Create container for pause button
         const container = document.createElement('div');
         container.style.position = 'fixed';
         container.style.top = '20px';
         container.style.right = '20px';
         container.style.zIndex = '1000';
-        container.style.display = 'flex';
-        container.style.alignItems = 'center';
-        container.style.gap = '10px';
-        
-        // Create FPS display
-        const fpsDisplay = document.createElement('div');
-        fpsDisplay.id = 'fps-display';
-        fpsDisplay.textContent = 'FPS: 0';
-        fpsDisplay.style.padding = '10px 15px';
-        fpsDisplay.style.background = '#2a2a2a';
-        fpsDisplay.style.border = '1px solid #555';
-        fpsDisplay.style.borderRadius = '4px';
-        fpsDisplay.style.color = '#e0e0e0';
-        fpsDisplay.style.fontSize = '14px';
-        fpsDisplay.style.fontFamily = 'monospace';
-        fpsDisplay.style.minWidth = '80px';
-        fpsDisplay.style.textAlign = 'center';
-        container.appendChild(fpsDisplay);
-        this.fpsDisplay = fpsDisplay;
         
         // Create pause button
         const button = document.createElement('button');
@@ -663,6 +645,7 @@ class App {
             this.graph.removeEdge(edge);
         }
         
+        this.connectionsNeedUpdate = true;
         this.updateConnections();
         
         // Update shader node headers if it's a shader
@@ -705,6 +688,7 @@ class App {
         }
 
         const edge = this.graph.addEdge(fromNode, fromPort, toNode, toPort);
+        this.connectionsNeedUpdate = true;
         this.updateConnections();
         
         // Update shader node headers if connected to a shader
@@ -907,6 +891,7 @@ class App {
         this.nodeContainer.style.transform = `scale(${this.zoom})`;
         this.nodeContainer.style.transformOrigin = 'top left';
         // Update connections to use correct coordinates for the new zoom level
+        this.connectionsNeedUpdate = true;
         this.updateConnections();
         // Update canvas sizes for all texture buffer nodes to account for new zoom level
         this.nodes.forEach(node => {
@@ -1057,6 +1042,7 @@ class App {
             this.nodes.splice(index, 1);
             this.graph.removeNode(node);
             node.destroy();
+            this.connectionsNeedUpdate = true;
             this.updateConnections();
             
             // Update headers of all affected shader nodes
@@ -1079,9 +1065,7 @@ class App {
             this.frameCount = 0;
             this.lastFpsUpdate = now;
             
-            if (this.fpsDisplay) {
-                this.fpsDisplay.textContent = `FPS: ${this.fps}`;
-            }
+            // FPS display on texture buffer nodes is now tracked per-node in updatePreview()
         }
         
         if (!this.paused) {
@@ -1094,6 +1078,13 @@ class App {
         
         // Update connections
         this.updateConnections();
+        
+        // Update texture buffer previews every frame for 60 FPS
+        this.nodes.forEach(node => {
+            if (node.type === 'texture-buffer') {
+                node.updatePreview();
+            }
+        });
         
         // Render background
         const gl = this.webglManager.gl;
@@ -1114,13 +1105,6 @@ class App {
             if (settled) {
                 this.graph.evaluate(this.webglManager, this.iteration);
                 this.iteration++;
-                
-                // Update texture buffer previews
-                this.nodes.forEach(node => {
-                    if (node.type === 'texture-buffer') {
-                        node.updatePreview();
-                    }
-                });
             }
         }
         

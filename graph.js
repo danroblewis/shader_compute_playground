@@ -98,20 +98,19 @@ class Graph {
                 node.evaluate(webglManager, this);
                 
                 // Update connected texture buffers automatically
+                // Note: Preview updates are handled in App.evaluateGraph() to avoid expensive readPixels calls
                 const outgoingEdges = this.getEdgesFrom(node);
                 for (const edge of outgoingEdges) {
                     const targetNode = edge.to;
                     if (targetNode.type === 'texture-buffer') {
                         // The shader already rendered to the texture buffer's texture
-                        // Just update the preview
-                        targetNode.updatePreview();
+                        // Preview will be updated in App.evaluateGraph() (throttled)
                     }
                 }
             } else if (node.type === 'texture-buffer') {
                 // Texture buffers: update from input connections
                 this.updateTextureBufferInput(node);
-                // Update preview after input is set
-                node.updatePreview();
+                // Preview will be updated in App.evaluateGraph() (throttled)
             }
         }
 
@@ -152,15 +151,15 @@ class Graph {
                     // Update connected texture buffers automatically
                     const outgoingEdges = this.getEdgesFrom(node);
                     for (const edge of outgoingEdges) {
-                        const targetNode = edge.to;
-                        if (targetNode.type === 'texture-buffer') {
-                            targetNode.updatePreview();
+                            const targetNode = edge.to;
+                            if (targetNode.type === 'texture-buffer') {
+                                // Preview will be updated in App.evaluateGraph() (throttled)
+                            }
                         }
+                    } else if (node.type === 'texture-buffer') {
+                        this.updateTextureBufferInput(node);
+                        // Preview will be updated in App.evaluateGraph() (throttled)
                     }
-                } else if (node.type === 'texture-buffer') {
-                    this.updateTextureBufferInput(node);
-                    node.updatePreview();
-                }
             }
         }
     }
