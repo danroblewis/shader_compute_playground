@@ -288,6 +288,9 @@ class ShaderNode extends Node {
         this.inputs = [];
         this.outputs = [];
         
+        // Set larger default size for shader nodes (width: 400px, height: 500px)
+        this.setSize(400, 500);
+        
         this.createElement();
         // Delay Monaco initialization slightly to ensure DOM is ready
         setTimeout(() => this.initMonaco(), 50);
@@ -301,11 +304,12 @@ class ShaderNode extends Node {
                 <span class="node-title">Shader</span>
                 <span class="node-type">Shader</span>
             </div>
-            <div class="shader-header-code" id="shader-header-${this.id}"></div>
             <div class="node-content shader-node">
+                <div class="shader-header-code" id="shader-header-top-${this.id}"></div>
                 <div class="shader-editor-container">
                     <div class="shader-editor" id="shader-editor-${this.id}"></div>
                 </div>
+                <div class="shader-header-code" id="shader-header-bottom-${this.id}"></div>
             </div>
         `;
 
@@ -364,6 +368,51 @@ class ShaderNode extends Node {
                     return;
                 }
 
+                // Register GLSL language if not already registered
+                if (!monaco.languages.getLanguages().find(lang => lang.id === 'glsl')) {
+                    monaco.languages.register({ id: 'glsl' });
+                    monaco.languages.setMonarchTokensProvider('glsl', {
+                        tokenizer: {
+                            root: [
+                                [/\/\*/, 'comment', '@comment'],
+                                [/\/\/.*$/, 'comment'],
+                                [/(true|false)\b/, 'keyword'],
+                                [/\b(vec[234]|mat[234]|sampler2D|samplerCube|float|int|bool|void)\b/, 'type'],
+                                [/\b(if|else|for|while|do|return|break|continue|discard|struct|uniform|varying|attribute|in|out|inout|const)\b/, 'keyword'],
+                                [/\b(texture|texture2D|textureCube|mix|smoothstep|step|clamp|fract|floor|ceil|round|abs|sign|min|max|pow|exp|log|sqrt|inversesqrt|normalize|length|distance|dot|cross|reflect|refract|mod|sin|cos|tan|asin|acos|atan|atan2|radians|degrees)\b/, 'keyword.function'],
+                                [/[0-9]*\.[0-9]+([eE][-+]?[0-9]+)?[fFdD]?/, 'number.float'],
+                                [/0[xX][0-9a-fA-F]+[Ll]?/, 'number.hex'],
+                                [/[0-9]+[fFdD]/, 'number.float'],
+                                [/[0-9]+/, 'number'],
+                                [/[a-z_$][\w$]*/, 'identifier'],
+                                [/[A-Z][\w\$]*/, 'type.identifier'],
+                                [/[{}()\[\]]/, '@brackets'],
+                                [/[<>](?=[^=])/, '@brackets'],
+                                [/[=!+\-*/%&|^]/, 'operator'],
+                                [/;/, 'delimiter'],
+                                [/"/, 'string', '@string'],
+                                [/'/, 'string', '@string_single']
+                            ],
+                            comment: [
+                                [/[^/*]+/, 'comment'],
+                                [/\/\*/, 'comment', '@push'],
+                                [/\*\//, 'comment', '@pop'],
+                                [/[/*]/, 'comment']
+                            ],
+                            string: [
+                                [/[^\\"]+/, 'string'],
+                                [/\\./, 'string.escape'],
+                                [/"/, 'string', '@pop']
+                            ],
+                            string_single: [
+                                [/[^\\']+/, 'string'],
+                                [/\\./, 'string.escape'],
+                                [/'/, 'string', '@pop']
+                            ]
+                        }
+                    });
+                }
+
                 this.monacoEditor = monaco.editor.create(editorContainer, {
                     value: 'vec4 output() {\n    return vec4(1.0, 0.0, 0.0, 1.0);\n}',
                     language: 'glsl',
@@ -410,23 +459,29 @@ class ShaderNode extends Node {
     }
 
     updateHeader() {
-        const headerEl = this.element.querySelector(`#shader-header-${this.id}`);
-        if (!headerEl) return;
+        const headerTopEl = this.element.querySelector(`#shader-header-top-${this.id}`);
+        const headerBottomEl = this.element.querySelector(`#shader-header-bottom-${this.id}`);
+        
+        if (!headerTopEl || !headerBottomEl) return;
 
         const inputDeclarations = this.inputs.length > 0 
             ? this.inputs.map((_, i) => `uniform sampler2D input${i};`).join('\n') + '\n'
             : '';
         
-        const headerCode = `#version 300 es
+        const topCode = `#version 300 es
 precision mediump float;
 ${inputDeclarations}in vec2 v_texCoord;
 out vec4 fragColor;
 
+`;
+
+        const bottomCode = `
 void main() {
     fragColor = output();
 }`;
 
-        headerEl.textContent = headerCode;
+        headerTopEl.textContent = topCode;
+        headerBottomEl.textContent = bottomCode;
     }
 
     setupResize(handleSE, handleS, handleE) {

@@ -133,14 +133,38 @@ class App {
             }
         });
 
-        // Port connections
-        const ports = node.element.querySelectorAll('.port');
-        ports.forEach(port => {
-            port.addEventListener('mousedown', (e) => {
+        // Port connections - use event delegation so dynamically added ports work
+        node.element.addEventListener('mousedown', (e) => {
+            const port = e.target.closest('.port');
+            if (port) {
                 this.startConnection(node, port, e);
                 e.stopPropagation();
-            });
+            }
         });
+        
+        node.element.addEventListener('mouseup', (e) => {
+            const port = e.target.closest('.port');
+            if (port) {
+                this.completeConnection(node, port, e);
+                e.stopPropagation();
+            }
+        });
+        
+        node.element.addEventListener('mouseenter', (e) => {
+            const port = e.target.closest('.port');
+            if (port && this.connectingFrom && port.classList.contains('input')) {
+                port.style.background = '#5a9eff';
+                port.style.borderColor = '#7bb6ff';
+            }
+        }, true);
+        
+        node.element.addEventListener('mouseleave', (e) => {
+            const port = e.target.closest('.port');
+            if (port && this.connectingFrom && port.classList.contains('input')) {
+                port.style.background = '';
+                port.style.borderColor = '';
+            }
+        }, true);
 
         // Selection
         node.element.addEventListener('mousedown', (e) => {
@@ -162,6 +186,7 @@ class App {
 
     startConnection(node, port, e) {
         e.stopPropagation();
+        e.preventDefault();
         const isInput = port.classList.contains('input');
         const isOutput = port.classList.contains('output');
         
@@ -170,23 +195,45 @@ class App {
             this.connectingFromPort = parseInt(port.dataset.port.split('-')[1]);
             this.connectionLine.style.display = 'block';
         } else if (isInput && this.connectingFrom) {
-            // Complete connection
-            const toPort = parseInt(port.dataset.port.split('-')[1]);
-            
-            // Check if connection is valid
-            if (this.connectingFrom === node) {
-                // Can't connect to self
-                this.connectingFrom = null;
-                this.connectingFromPort = null;
-                this.connectionLine.style.display = 'none';
-                return;
-            }
-            
-            this.createConnection(this.connectingFrom, this.connectingFromPort, node, toPort);
-            this.connectingFrom = null;
-            this.connectingFromPort = null;
-            this.connectionLine.style.display = 'none';
+            // Complete connection on mousedown if already connecting
+            this.completeConnection(node, port, e);
         }
+    }
+
+    completeConnection(node, port, e) {
+        if (!this.connectingFrom) return;
+        
+        const isInput = port.classList.contains('input');
+        if (!isInput) return;
+        
+        e.stopPropagation();
+        e.preventDefault();
+        
+        const toPort = parseInt(port.dataset.port.split('-')[1]);
+        
+        // Check if connection is valid
+        if (this.connectingFrom === node) {
+            // Can't connect to self
+            this.cancelConnection();
+            return;
+        }
+        
+        this.createConnection(this.connectingFrom, this.connectingFromPort, node, toPort);
+        this.cancelConnection();
+    }
+
+    cancelConnection() {
+        this.connectingFrom = null;
+        this.connectingFromPort = null;
+        this.connectionLine.style.display = 'none';
+        
+        // Reset port hover styles
+        document.querySelectorAll('.port').forEach(port => {
+            if (port.classList.contains('input')) {
+                port.style.background = '';
+                port.style.borderColor = '';
+            }
+        });
     }
 
     createConnection(fromNode, fromPort, toNode, toPort) {
@@ -300,11 +347,10 @@ class App {
                 this.selectedNode.particle.vy = 0;
             }
         }
-        if (this.connectingFrom && e.button === 0) {
-            // Cancel connection
-            this.connectingFrom = null;
-            this.connectingFromPort = null;
-            this.connectionLine.style.display = 'none';
+        // Don't cancel connection on canvas mouseup - let port mouseup handle it
+        // Only cancel if clicking on canvas (not on a port)
+        if (this.connectingFrom && e.button === 0 && !e.target.closest('.port')) {
+            this.cancelConnection();
         }
     }
 
