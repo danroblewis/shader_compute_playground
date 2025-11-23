@@ -893,6 +893,8 @@ class ShaderNode extends Node {
         
         const topCode = `#version 300 es
 precision mediump float;
+uniform float t;
+uniform float seed;
 ${inputDeclarations}in vec2 v_texCoord;
 out vec4 fragColor;
 `;
@@ -1144,8 +1146,15 @@ out vec4 fragColor;
                 }
             }
 
+            // Get time and seed from app (if available)
+            const time = window.app && window.app.time !== undefined ? window.app.time : 0;
+            const seed = window.app && window.app.seed !== undefined ? window.app.seed : 0;
+            
             // Render shader output to target texture
-            webglManager.renderToTexture(targetTexture, this.program, inputTextures);
+            webglManager.renderToTexture(targetTexture, this.program, inputTextures, {
+                t: time,
+                seed: seed
+            });
             
             // Update header with current connections (only if needed)
             // Don't update header during evaluation to avoid unnecessary work
@@ -1210,6 +1219,8 @@ out vec4 fragColor;
         
         const headerCode = `#version 300 es
 precision mediump float;
+uniform float t;
+uniform float seed;
 ${inputDeclarations}in vec2 v_texCoord;
 out vec4 fragColor;
 
