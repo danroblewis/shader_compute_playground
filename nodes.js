@@ -47,7 +47,7 @@ class Node {
 }
 
 class TextureBufferNode extends Node {
-    constructor(id, x, y, physics, webglManager, width = 512, height = 512) {
+    constructor(id, x, y, physics, webglManager, width = 512, height = 512, name = 'tex_0') {
         super(id, 'texture-buffer', x, y, physics);
         this.webglManager = webglManager;
         this.textureWidth = width;
@@ -56,7 +56,7 @@ class TextureBufferNode extends Node {
         this.previewCanvas = null;
         this.isDrawing = false;
         this.drawContext = null;
-        this.name = 'Texture Buffer';
+        this.name = name;
         
         // Set proper size for texture buffer node (needs space for header, preview, and controls)
         // Header: ~40px, Preview: 200px, Controls: ~40px, Padding: 24px = ~304px minimum
@@ -125,7 +125,7 @@ class TextureBufferNode extends Node {
         const titleEl = div.querySelector(`[data-node-title="${this.id}"]`);
         if (titleEl) {
             titleEl.addEventListener('blur', () => {
-                const newName = titleEl.textContent.trim() || 'Texture Buffer';
+                const newName = titleEl.textContent.trim() || this.name;
                 this.setName(newName);
             });
             
@@ -328,7 +328,7 @@ class TextureBufferNode extends Node {
 }
 
 class ShaderNode extends Node {
-    constructor(id, x, y, physics, webglManager) {
+    constructor(id, x, y, physics, webglManager, name = 'shad_0') {
         super(id, 'shader', x, y, physics);
         this.webglManager = webglManager;
         this.editor = null;
@@ -337,6 +337,7 @@ class ShaderNode extends Node {
         this.inputTextures = [];
         this.outputTexture = null;
         this.monacoEditor = null;
+        this.name = name;
         
         this.inputs = [];
         this.outputs = [];
@@ -354,7 +355,7 @@ class ShaderNode extends Node {
         
         div.innerHTML = `
             <div class="node-header">
-                <span class="node-title">Shader</span>
+                <span class="node-title" contenteditable="true" data-node-title="${this.id}">${this.name}</span>
                 <span class="node-type">Shader</span>
             </div>
             <div class="node-content shader-node">
@@ -382,7 +383,46 @@ class ShaderNode extends Node {
         // Setup resize
         this.setupResize(resizeHandle, resizeHandleS, resizeHandleE);
 
+        // Make title editable
+        const titleEl = div.querySelector(`[data-node-title="${this.id}"]`);
+        if (titleEl) {
+            titleEl.addEventListener('blur', () => {
+                const newName = titleEl.textContent.trim() || this.name;
+                this.setName(newName);
+            });
+            
+            titleEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    titleEl.blur();
+                } else if (e.key === 'Escape') {
+                    titleEl.textContent = this.name;
+                    titleEl.blur();
+                }
+            });
+        }
+
         return div;
+    }
+
+    setName(name) {
+        // Sanitize name for GLSL identifier (remove spaces, special chars, ensure valid identifier)
+        let sanitizedName = name.replace(/[^a-zA-Z0-9_]/g, '_');
+        // GLSL identifiers can't start with a number
+        if (/^[0-9]/.test(sanitizedName)) {
+            sanitizedName = '_' + sanitizedName;
+        }
+        // Must have at least one character
+        if (!sanitizedName || sanitizedName === '_') {
+            sanitizedName = 'shader';
+        }
+        this.name = sanitizedName;
+        
+        // Update display (keep original for display, use sanitized for GLSL)
+        const titleEl = this.element.querySelector(`[data-node-title="${this.id}"]`);
+        if (titleEl) {
+            titleEl.textContent = name;
+        }
     }
 
     async initMonaco() {
@@ -517,26 +557,32 @@ class ShaderNode extends Node {
 
         // Get texture buffer names from connections
         const inputNames = {};
+        const connectedPorts = new Set();
+        
         if (graph) {
             const incomingEdges = graph.getEdgesTo(this);
             for (const edge of incomingEdges) {
-                const inputIndex = this.inputs.findIndex(inp => inp.port === edge.toPort);
-                if (inputIndex >= 0) {
-                    const sourceNode = edge.from;
-                    if (sourceNode.type === 'texture-buffer') {
-                        inputNames[inputIndex] = sourceNode.name;
-                    } else if (sourceNode.type === 'shader') {
-                        // For shader outputs, use a default name
-                        inputNames[inputIndex] = `input${inputIndex}`;
-                    }
+                const toPort = edge.toPort;
+                connectedPorts.add(toPort);
+                
+                const sourceNode = edge.from;
+                if (sourceNode.type === 'texture-buffer') {
+                    inputNames[toPort] = sourceNode.name;
+                } else if (sourceNode.type === 'shader') {
+                    // For shader outputs, use a default name
+                    inputNames[toPort] = `input${toPort}`;
+                } else {
+                    inputNames[toPort] = `input${toPort}`;
                 }
             }
         }
 
-        // Generate uniform declarations using texture buffer names
-        const inputDeclarations = this.inputs.length > 0 
-            ? this.inputs.map((_, i) => {
-                const name = inputNames[i] || `input${i}`;
+        // Generate uniform declarations for all connected ports
+        // Sort ports to ensure consistent ordering
+        const sortedPorts = Array.from(connectedPorts).sort((a, b) => a - b);
+        const inputDeclarations = sortedPorts.length > 0 
+            ? sortedPorts.map(port => {
+                const name = inputNames[port] || `input${port}`;
                 return `uniform sampler2D ${name};`;
             }).join('\n') + '\n'
             : '';

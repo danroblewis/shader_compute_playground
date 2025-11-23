@@ -15,6 +15,8 @@ class App {
         this.connectionLine = null;
         
         this.nodeIdCounter = 0;
+        this.textureBufferCounter = 0;
+        this.shaderCounter = 0;
         this.iteration = 0;
         
         this.init();
@@ -95,7 +97,10 @@ class App {
             `texture-${this.nodeIdCounter++}`,
             x, y,
             this.physics,
-            this.webglManager
+            this.webglManager,
+            512,
+            512,
+            `tex_${this.textureBufferCounter++}`
         );
         this.nodes.push(node);
         this.graph.addNode(node);
@@ -109,7 +114,8 @@ class App {
             `shader-${this.nodeIdCounter++}`,
             x, y,
             this.physics,
-            this.webglManager
+            this.webglManager,
+            `shad_${this.shaderCounter++}`
         );
         node.addInput('input0');
         node.addOutput('output0');
@@ -139,6 +145,13 @@ class App {
         node.element.addEventListener('mousedown', (e) => {
             const port = e.target.closest('.port');
             if (port) {
+                // Right-click on input port to delete connection
+                if (e.button === 2 && port.classList.contains('input')) {
+                    this.deleteConnectionAtPort(node, port);
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
                 this.startConnection(node, port, e);
                 e.stopPropagation();
             }
@@ -148,6 +161,16 @@ class App {
             const port = e.target.closest('.port');
             if (port) {
                 this.completeConnection(node, port, e);
+                e.stopPropagation();
+            }
+        });
+        
+        // Also handle contextmenu for right-click deletion
+        node.element.addEventListener('contextmenu', (e) => {
+            const port = e.target.closest('.port');
+            if (port && port.classList.contains('input')) {
+                this.deleteConnectionAtPort(node, port);
+                e.preventDefault();
                 e.stopPropagation();
             }
         });
@@ -257,6 +280,25 @@ class App {
         });
     }
 
+    deleteConnectionAtPort(node, port) {
+        const isInput = port.classList.contains('input');
+        if (!isInput) return;
+        
+        const toPort = parseInt(port.dataset.port.split('-')[1]);
+        const edges = this.graph.getEdgesTo(node).filter(edge => edge.toPort === toPort);
+        
+        for (const edge of edges) {
+            this.graph.removeEdge(edge);
+        }
+        
+        this.updateConnections();
+        
+        // Update shader node headers if it's a shader
+        if (node.type === 'shader') {
+            node.updateHeader(this.graph);
+        }
+    }
+
     createConnection(fromNode, fromPort, toNode, toPort) {
         // Check if connection already exists
         const existing = this.graph.edges.find(edge =>
@@ -265,6 +307,28 @@ class App {
         );
         
         if (existing) return;
+
+        // For shader nodes, check if the target port already has a connection
+        // If so, automatically use the next available port
+        if (toNode.type === 'shader') {
+            const existingConnections = this.graph.getEdgesTo(toNode);
+            const portInUse = existingConnections.some(edge => edge.toPort === toPort);
+            
+            if (portInUse) {
+                // Find the next available port
+                const usedPorts = new Set(existingConnections.map(e => e.toPort));
+                let nextPort = toPort;
+                while (usedPorts.has(nextPort)) {
+                    nextPort++;
+                }
+                toPort = nextPort;
+            }
+            
+            // Ensure the input port exists
+            while (toNode.inputs.length <= toPort) {
+                toNode.addInput(`input${toNode.inputs.length}`);
+            }
+        }
 
         const edge = this.graph.addEdge(fromNode, fromPort, toNode, toPort);
         this.updateConnections();
@@ -323,7 +387,20 @@ class App {
 
     onCanvasMouseDown(e) {
         if (e.button === 2) { // Right click
-            this.showContextMenu(e.clientX, e.clientY);
+            // Check if clicking on a node
+            const clickedNode = this.nodes.find(node => {
+                const rect = node.element.getBoundingClientRect();
+                return e.clientX >= rect.left && e.clientX <= rect.right &&
+                       e.clientY >= rect.top && e.clientY <= rect.bottom;
+            });
+            
+            if (clickedNode) {
+                // Show context menu for the node
+                this.showNodeContextMenu(clickedNode, e.clientX, e.clientY);
+            } else {
+                // Show context menu for canvas
+                this.showContextMenu(e.clientX, e.clientY);
+            }
         } else if (e.button === 0) { // Left click
             if (!this.dragging) {
                 this.selectedNode = null;
@@ -379,6 +456,48 @@ class App {
         if (this.connectingFrom && e.button === 0 && !e.target.closest('.port')) {
             this.cancelConnection();
         }
+    }
+
+    showNodeContextMenu(node, x, y) {
+        const menu = document.createElement('div');
+        menu.style.position = 'fixed';
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+        menu.style.background = '#1a1a1a';
+        menu.style.border = '1px solid #333';
+        menu.style.borderRadius = '4px';
+        menu.style.padding = '4px';
+        menu.style.zIndex = '1000';
+        menu.style.minWidth = '150px';
+
+        const items = [
+            { label: 'Delete Node', action: () => this.removeNode(node) },
+        ];
+
+        items.forEach(item => {
+            const div = document.createElement('div');
+            div.textContent = item.label;
+            div.style.padding = '8px 12px';
+            div.style.cursor = 'pointer';
+            div.style.color = '#e0e0e0';
+            div.addEventListener('mouseenter', () => div.style.background = '#2a2a2a');
+            div.addEventListener('mouseleave', () => div.style.background = 'transparent');
+            div.addEventListener('click', () => {
+                item.action();
+                menu.remove();
+            });
+            menu.appendChild(div);
+        });
+
+        document.body.appendChild(menu);
+
+        const removeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', removeMenu);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', removeMenu), 0);
     }
 
     showContextMenu(x, y) {
