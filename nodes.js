@@ -377,6 +377,7 @@ class ShaderNode extends Node {
                     <div class="shader-editor" id="shader-editor-${this.id}"></div>
                 </div>
                 <div class="shader-header-code" id="shader-header-bottom-${this.id}"></div>
+                <div class="shader-error" id="shader-error-${this.id}" style="display: none;"></div>
             </div>
         `;
 
@@ -533,6 +534,8 @@ class ShaderNode extends Node {
 
                 this.monacoEditor.onDidChangeModelContent(() => {
                     this.code = this.monacoEditor.getValue();
+                    // Clear previous error when code changes
+                    this.clearError();
                     // updateHeader will be called with graph when connections change
                     // Save state after code change (debounced)
                     if (window.app) {
@@ -623,8 +626,90 @@ out vec4 fragColor;
 
         const bottomCode = `void main() { fragColor = compute(); }`;
 
-        headerTopEl.textContent = topCode;
-        headerBottomEl.textContent = bottomCode;
+        headerTopEl.innerHTML = this.highlightGLSL(topCode);
+        headerBottomEl.innerHTML = this.highlightGLSL(bottomCode);
+    }
+
+    highlightGLSL(code) {
+        // GLSL keywords
+        const keywords = new Set([
+            'void', 'float', 'int', 'bool', 'vec2', 'vec3', 'vec4', 'mat2', 'mat3', 'mat4',
+            'sampler2D', 'samplerCube', 'if', 'else', 'for', 'while', 'return', 'break', 'continue',
+            'discard', 'in', 'out', 'inout', 'uniform', 'attribute', 'varying', 'const', 'precision',
+            'lowp', 'mediump', 'highp', 'struct', 'layout'
+        ]);
+
+        // Simple token-based highlighting
+        const parts = [];
+        let i = 0;
+        const len = code.length;
+        
+        while (i < len) {
+            // Check for preprocessor directive
+            if (code[i] === '#' && (i === 0 || code[i - 1] === '\n')) {
+                const match = code.slice(i).match(/^#(\w+)/);
+                if (match) {
+                    const text = match[0];
+                    parts.push({ type: 'preprocessor', text });
+                    i += text.length;
+                    continue;
+                }
+            }
+            
+            // Check for numbers
+            const numMatch = code.slice(i).match(/^\d+\.?\d*/);
+            if (numMatch) {
+                parts.push({ type: 'number', text: numMatch[0] });
+                i += numMatch[0].length;
+                continue;
+            }
+            
+            // Check for identifiers (keywords or functions)
+            const identMatch = code.slice(i).match(/^\w+/);
+            if (identMatch) {
+                const text = identMatch[0];
+                // Check if followed by opening paren (function)
+                const nextChar = code[i + text.length];
+                if (nextChar === '(') {
+                    if (!keywords.has(text)) {
+                        parts.push({ type: 'function', text });
+                        i += text.length;
+                        continue;
+                    }
+                }
+                // Check if it's a keyword
+                if (keywords.has(text)) {
+                    parts.push({ type: 'keyword', text });
+                    i += text.length;
+                    continue;
+                }
+                // Regular identifier
+                parts.push({ type: 'text', text });
+                i += text.length;
+                continue;
+            }
+            
+            // Regular character
+            parts.push({ type: 'text', text: code[i] });
+            i++;
+        }
+        
+        // Build HTML with proper escaping
+        let result = '';
+        for (const part of parts) {
+            const escaped = part.text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            
+            if (part.type === 'text') {
+                result += escaped;
+            } else {
+                result += `<span class="glsl-${part.type}">${escaped}</span>`;
+            }
+        }
+        
+        return result;
     }
 
     setupResize(handleSE, handleS, handleE) {
@@ -774,8 +859,14 @@ out vec4 fragColor;
                 if (this.program) {
                     webglManager.gl.deleteProgram(this.program);
                 }
-                this.program = webglManager.createProgram(vertexSource, fullCode);
-                this.lastCode = this.code;
+                try {
+                    this.program = webglManager.createProgram(vertexSource, fullCode);
+                    this.lastCode = this.code;
+                    this.clearError(); // Clear error on successful compilation
+                } catch (compileError) {
+                    this.showError(compileError.message);
+                    throw compileError; // Re-throw to prevent rendering
+                }
             }
 
             // Render shader output to target texture
@@ -784,7 +875,10 @@ out vec4 fragColor;
             // Update header with current connections (only if needed)
             // Don't update header during evaluation to avoid unnecessary work
         } catch (error) {
-            console.error('Shader evaluation error:', error);
+            // Error already displayed by showError if it's a compilation error
+            if (!error.message.includes('Shader compilation') && !error.message.includes('Program linking')) {
+                this.showError(error.message);
+            }
         }
     }
 
@@ -822,6 +916,22 @@ void main() {
 }
 `;
         return headerCode + this.code + mainCode;
+    }
+
+    showError(errorMessage) {
+        const errorEl = this.element.querySelector(`#shader-error-${this.id}`);
+        if (errorEl) {
+            errorEl.textContent = errorMessage;
+            errorEl.style.display = 'block';
+        }
+    }
+
+    clearError() {
+        const errorEl = this.element.querySelector(`#shader-error-${this.id}`);
+        if (errorEl) {
+            errorEl.textContent = '';
+            errorEl.style.display = 'none';
+        }
     }
 }
 
