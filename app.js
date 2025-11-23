@@ -27,6 +27,11 @@ class App {
         this.paused = false;
         this.paletteNode = null;
         
+        // FPS tracking
+        this.fps = 0;
+        this.frameCount = 0;
+        this.lastFpsUpdate = performance.now();
+        
         this.init();
     }
 
@@ -87,13 +92,36 @@ class App {
     }
 
     createPauseButton() {
+        // Create container for FPS and pause button
+        const container = document.createElement('div');
+        container.style.position = 'fixed';
+        container.style.top = '20px';
+        container.style.right = '20px';
+        container.style.zIndex = '1000';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.gap = '10px';
+        
+        // Create FPS display
+        const fpsDisplay = document.createElement('div');
+        fpsDisplay.id = 'fps-display';
+        fpsDisplay.textContent = 'FPS: 0';
+        fpsDisplay.style.padding = '10px 15px';
+        fpsDisplay.style.background = '#2a2a2a';
+        fpsDisplay.style.border = '1px solid #555';
+        fpsDisplay.style.borderRadius = '4px';
+        fpsDisplay.style.color = '#e0e0e0';
+        fpsDisplay.style.fontSize = '14px';
+        fpsDisplay.style.fontFamily = 'monospace';
+        fpsDisplay.style.minWidth = '80px';
+        fpsDisplay.style.textAlign = 'center';
+        container.appendChild(fpsDisplay);
+        this.fpsDisplay = fpsDisplay;
+        
+        // Create pause button
         const button = document.createElement('button');
         button.id = 'pause-button';
         button.textContent = '⏸ Pause';
-        button.style.position = 'fixed';
-        button.style.top = '20px';
-        button.style.right = '20px';
-        button.style.zIndex = '1000';
         button.style.padding = '10px 20px';
         button.style.background = '#2a2a2a';
         button.style.border = '1px solid #555';
@@ -114,7 +142,8 @@ class App {
             this.togglePause();
         });
         
-        document.body.appendChild(button);
+        container.appendChild(button);
+        document.body.appendChild(container);
         this.pauseButton = button;
     }
 
@@ -391,11 +420,15 @@ class App {
         svg.style.position = 'absolute';
         svg.style.top = '0';
         svg.style.left = '0';
-        svg.style.width = '100%';
-        svg.style.height = '100%';
+        // Make SVG extremely large to cover all possible node positions
+        svg.setAttribute('width', '50000');
+        svg.setAttribute('height', '50000');
+        svg.setAttribute('viewBox', '0 0 50000 50000');
         svg.style.pointerEvents = 'none';
+        // Center the viewBox around the origin
+        svg.style.transform = 'translate(-25000px, -25000px)';
         this.nodeContainer.appendChild(svg);
-        
+
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('stroke', '#4a9eff');
         path.setAttribute('stroke-width', '2');
@@ -557,9 +590,12 @@ class App {
     startDrag(node, e) {
         this.dragging = true;
         this.selectedNode = node;
-        const rect = node.element.getBoundingClientRect();
-        this.dragOffset.x = e.clientX - (node.particle.x);
-        this.dragOffset.y = e.clientY - (node.particle.y);
+        // Convert viewport coordinates to unscaled coordinate space
+        const containerRect = this.nodeContainer.getBoundingClientRect();
+        const unscaledX = (e.clientX - containerRect.left) / this.zoom;
+        const unscaledY = (e.clientY - containerRect.top) / this.zoom;
+        this.dragOffset.x = unscaledX - node.particle.x;
+        this.dragOffset.y = unscaledY - node.particle.y;
         node.element.classList.add('selected');
         e.preventDefault();
     }
@@ -701,10 +737,11 @@ class App {
             const containerRect = this.nodeContainer.getBoundingClientRect();
 
             // Calculate coordinates relative to container, then divide by zoom to get SVG coordinates
-            const x1 = (fromRect.left + fromRect.width / 2 - containerRect.left) / this.zoom;
-            const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / this.zoom;
-            const x2 = (toRect.left + toRect.width / 2 - containerRect.left) / this.zoom;
-            const y2 = (toRect.top + toRect.height / 2 - containerRect.top) / this.zoom;
+            // Offset by 25000 to center in the large SVG viewBox
+            const x1 = (fromRect.left + fromRect.width / 2 - containerRect.left) / this.zoom + 25000;
+            const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / this.zoom + 25000;
+            const x2 = (toRect.left + toRect.width / 2 - containerRect.left) / this.zoom + 25000;
+            const y2 = (toRect.top + toRect.height / 2 - containerRect.top) / this.zoom + 25000;
 
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             const dx = x2 - x1;
@@ -752,6 +789,9 @@ class App {
             });
             
             if (!clickedNode && !this.connectingFrom) {
+                // Unselect any selected nodes
+                this.selectedNode = null;
+                this.nodes.forEach(n => n.element.classList.remove('selected'));
                 // Start panning
                 this.panning = true;
                 this.panStart.x = e.clientX;
@@ -773,11 +813,11 @@ class App {
             if (fromPort) {
                 const fromRect = fromPort.getBoundingClientRect();
                 const containerRect = this.nodeContainer.getBoundingClientRect();
-                // Divide by zoom to get SVG coordinates
-                const x1 = (fromRect.left + fromRect.width / 2 - containerRect.left) / this.zoom;
-                const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / this.zoom;
-                const x2 = (e.clientX - containerRect.left) / this.zoom;
-                const y2 = (e.clientY - containerRect.top) / this.zoom;
+                // Divide by zoom to get SVG coordinates, offset by 25000 to center in large SVG
+                const x1 = (fromRect.left + fromRect.width / 2 - containerRect.left) / this.zoom + 25000;
+                const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / this.zoom + 25000;
+                const x2 = (e.clientX - containerRect.left) / this.zoom + 25000;
+                const y2 = (e.clientY - containerRect.top) / this.zoom + 25000;
 
                 const dx = x2 - x1;
                 const cp1x = x1 + dx * 0.5;
@@ -791,8 +831,15 @@ class App {
 
         // Handle panning
         if (this.panning) {
-            const dx = e.clientX - this.panStart.x;
-            const dy = e.clientY - this.panStart.y;
+            // Convert viewport coordinates to unscaled coordinate space
+            const containerRect = this.nodeContainer.getBoundingClientRect();
+            const unscaledX = (e.clientX - containerRect.left) / this.zoom;
+            const unscaledY = (e.clientY - containerRect.top) / this.zoom;
+            const unscaledStartX = (this.panStart.x - containerRect.left) / this.zoom;
+            const unscaledStartY = (this.panStart.y - containerRect.top) / this.zoom;
+            
+            const dx = unscaledX - unscaledStartX;
+            const dy = unscaledY - unscaledStartY;
             
             // Move all nodes
             this.nodes.forEach(node => {
@@ -800,7 +847,7 @@ class App {
                 node.particle.y += dy;
             });
             
-            // Update pan start for next move
+            // Update pan start for next move (in viewport coordinates)
             this.panStart.x = e.clientX;
             this.panStart.y = e.clientY;
         }
@@ -808,8 +855,12 @@ class App {
         // Handle dragging
         if (this.dragging && this.selectedNode) {
             const node = this.selectedNode;
-            node.particle.x = e.clientX - this.dragOffset.x;
-            node.particle.y = e.clientY - this.dragOffset.y;
+            // Convert viewport coordinates to unscaled coordinate space
+            const containerRect = this.nodeContainer.getBoundingClientRect();
+            const unscaledX = (e.clientX - containerRect.left) / this.zoom;
+            const unscaledY = (e.clientY - containerRect.top) / this.zoom;
+            node.particle.x = unscaledX - this.dragOffset.x;
+            node.particle.y = unscaledY - this.dragOffset.y;
             node.particle.vx = 0;
             node.particle.vy = 0;
         }
@@ -857,6 +908,12 @@ class App {
         this.nodeContainer.style.transformOrigin = 'top left';
         // Update connections to use correct coordinates for the new zoom level
         this.updateConnections();
+        // Update canvas sizes for all texture buffer nodes to account for new zoom level
+        this.nodes.forEach(node => {
+            if (node.type === 'texture-buffer' && node.updateCanvasSize) {
+                node.updateCanvasSize();
+            }
+        });
     }
 
     onCanvasMouseUp(e) {
@@ -1012,6 +1069,21 @@ class App {
     }
 
     animate() {
+        // Update FPS
+        this.frameCount++;
+        const now = performance.now();
+        const elapsed = now - this.lastFpsUpdate;
+        
+        if (elapsed >= 1000) { // Update FPS every second
+            this.fps = Math.round((this.frameCount * 1000) / elapsed);
+            this.frameCount = 0;
+            this.lastFpsUpdate = now;
+            
+            if (this.fpsDisplay) {
+                this.fpsDisplay.textContent = `FPS: ${this.fps}`;
+            }
+        }
+        
         if (!this.paused) {
             // Physics step
             this.physics.step();

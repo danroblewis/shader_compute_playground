@@ -90,19 +90,29 @@ class TextureBufferNode extends Node {
         `;
 
         this.previewCanvas = div.querySelector('.texture-preview-canvas');
-        // Set canvas size to match container (will be updated after container is rendered)
-        const updateCanvasSize = () => {
+        // Set canvas size to match container (will be updated after container is rendered and on resize)
+        this.updateCanvasSize = () => {
             const container = this.previewCanvas.parentElement;
             if (container) {
                 const rect = container.getBoundingClientRect();
-                this.previewCanvas.width = rect.width;
-                this.previewCanvas.height = rect.height;
+                // Account for zoom level - getBoundingClientRect returns scaled coordinates
+                const zoom = window.app?.zoom || 1.0;
+                const unscaledWidth = rect.width / zoom;
+                const unscaledHeight = rect.height / zoom;
+                // Use device pixel ratio for crisp rendering
+                const dpr = window.devicePixelRatio || 1;
+                this.previewCanvas.width = unscaledWidth * dpr;
+                this.previewCanvas.height = unscaledHeight * dpr;
+                this.previewCanvas.style.width = `${unscaledWidth}px`;
+                this.previewCanvas.style.height = `${unscaledHeight}px`;
+                // Update preview after canvas size changes
+                this.updatePreview();
             }
         };
         // Update after a short delay to ensure container is rendered
-        setTimeout(updateCanvasSize, 10);
-        // Also update on resize
-        window.addEventListener('resize', updateCanvasSize);
+        setTimeout(() => this.updateCanvasSize(), 10);
+        // Also update on window resize
+        window.addEventListener('resize', () => this.updateCanvasSize());
 
         // Ports
         const inputPort = document.createElement('div');
@@ -116,6 +126,22 @@ class TextureBufferNode extends Node {
         outputPort.style.top = '50%';
         outputPort.dataset.port = 'output-0';
         div.appendChild(outputPort);
+
+        // Resize handles
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'resize-handle se';
+        div.appendChild(resizeHandle);
+
+        const resizeHandleS = document.createElement('div');
+        resizeHandleS.className = 'resize-handle s';
+        div.appendChild(resizeHandleS);
+
+        const resizeHandleE = document.createElement('div');
+        resizeHandleE.className = 'resize-handle e';
+        div.appendChild(resizeHandleE);
+
+        // Setup resize
+        this.setupResize(resizeHandle, resizeHandleS, resizeHandleE);
 
         // Event listeners
         div.querySelector('[data-action="clear"]').addEventListener('click', () => this.clear());
@@ -289,6 +315,62 @@ class TextureBufferNode extends Node {
         this.texture = this.webglManager.createTexture(width, height);
         this.element.querySelector('.texture-info').textContent = `${width}×${height}`;
         this.updatePreview();
+    }
+    
+    setSize(width, height) {
+        super.setSize(width, height);
+        // Update canvas size when node is resized
+        if (this.updateCanvasSize) {
+            // Use requestAnimationFrame to ensure DOM has updated
+            requestAnimationFrame(() => this.updateCanvasSize());
+        }
+    }
+    
+    setupResize(handleSE, handleS, handleE) {
+        let isResizing = false;
+        let startX, startY, startWidth, startHeight;
+        let resizeDirection = '';
+
+        const startResize = (e, direction) => {
+            isResizing = true;
+            resizeDirection = direction;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = this.particle.width;
+            startHeight = this.particle.height;
+            e.preventDefault();
+            e.stopPropagation();
+        };
+
+        const doResize = (e) => {
+            if (!isResizing) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            if (resizeDirection === 'se' || resizeDirection === 's') {
+                const newHeight = Math.max(200, startHeight + dy);
+                this.setSize(this.particle.width, newHeight);
+            }
+            if (resizeDirection === 'se' || resizeDirection === 'e') {
+                const newWidth = Math.max(200, startWidth + dx);
+                this.setSize(newWidth, this.particle.height);
+            }
+        };
+
+        const stopResize = () => {
+            isResizing = false;
+            resizeDirection = '';
+        };
+
+        handleSE.addEventListener('mousedown', (e) => startResize(e, 'se'));
+        handleS.addEventListener('mousedown', (e) => startResize(e, 's'));
+        handleE.addEventListener('mousedown', (e) => startResize(e, 'e'));
+
+        document.addEventListener('mousemove', doResize);
+        document.addEventListener('mouseup', stopResize);
+        
+        // Stop resizing if mouse leaves window
+        window.addEventListener('mouseleave', stopResize);
     }
 
     updatePreview() {
