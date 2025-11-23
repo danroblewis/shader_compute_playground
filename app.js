@@ -21,6 +21,7 @@ class App {
         this.textureBufferCounter = 0;
         this.shaderCounter = 0;
         this.iteration = 0;
+        this.paused = false;
         
         this.init();
     }
@@ -67,6 +68,9 @@ class App {
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.onKeyDown(e));
         
+        // Create pause/play button
+        this.createPauseButton();
+        
         // Physics and render loop
         this.animate();
         
@@ -75,6 +79,47 @@ class App {
         
         // Set up auto-save
         this.setupAutoSave();
+    }
+
+    createPauseButton() {
+        const button = document.createElement('button');
+        button.id = 'pause-button';
+        button.textContent = '⏸ Pause';
+        button.style.position = 'fixed';
+        button.style.top = '20px';
+        button.style.right = '20px';
+        button.style.zIndex = '1000';
+        button.style.padding = '10px 20px';
+        button.style.background = '#2a2a2a';
+        button.style.border = '1px solid #555';
+        button.style.borderRadius = '4px';
+        button.style.color = '#e0e0e0';
+        button.style.cursor = 'pointer';
+        button.style.fontSize = '14px';
+        button.style.fontFamily = 'inherit';
+        
+        button.addEventListener('mouseenter', () => {
+            button.style.background = '#3a3a3a';
+        });
+        button.addEventListener('mouseleave', () => {
+            button.style.background = '#2a2a2a';
+        });
+        
+        button.addEventListener('click', () => {
+            this.togglePause();
+        });
+        
+        document.body.appendChild(button);
+        this.pauseButton = button;
+    }
+
+    togglePause() {
+        this.paused = !this.paused;
+        if (this.paused) {
+            this.pauseButton.textContent = '▶ Play';
+        } else {
+            this.pauseButton.textContent = '⏸ Pause';
+        }
     }
 
     setupAutoSave() {
@@ -874,11 +919,13 @@ class App {
     }
 
     animate() {
-        // Physics step
-        this.physics.step();
-        
-        // Update node positions
-        this.nodes.forEach(node => node.updatePosition());
+        if (!this.paused) {
+            // Physics step
+            this.physics.step();
+            
+            // Update node positions
+            this.nodes.forEach(node => node.updatePosition());
+        }
         
         // Update connections
         this.updateConnections();
@@ -893,23 +940,25 @@ class App {
     }
 
     evaluateGraph() {
-        // Check if physics has settled
-        const settled = this.physics.particles.every(p => 
-            Math.abs(p.vx) < 0.1 && Math.abs(p.vy) < 0.1
-        );
+        if (!this.paused) {
+            // Check if physics has settled
+            const settled = this.physics.particles.every(p => 
+                Math.abs(p.vx) < 0.1 && Math.abs(p.vy) < 0.1
+            );
 
-        if (settled) {
-            this.graph.evaluate(this.webglManager, this.iteration);
-            this.iteration++;
-            
-            // Update texture buffer previews
-            this.nodes.forEach(node => {
-                if (node.type === 'texture-buffer') {
-                    node.updatePreview();
-                }
-            });
+            if (settled) {
+                this.graph.evaluate(this.webglManager, this.iteration);
+                this.iteration++;
+                
+                // Update texture buffer previews
+                this.nodes.forEach(node => {
+                    if (node.type === 'texture-buffer') {
+                        node.updatePreview();
+                    }
+                });
+            }
         }
-
+        
         setTimeout(() => this.evaluateGraph(), 100);
     }
 }
