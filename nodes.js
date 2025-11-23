@@ -478,6 +478,34 @@ class ShaderNode extends Node {
                 // Register GLSL language if not already registered
                 if (!monaco.languages.getLanguages().find(lang => lang.id === 'glsl')) {
                     monaco.languages.register({ id: 'glsl' });
+                    
+                    // Configure comment syntax for GLSL
+                    monaco.languages.setLanguageConfiguration('glsl', {
+                        comments: {
+                            lineComment: '//',
+                            blockComment: ['/*', '*/']
+                        },
+                        brackets: [
+                            ['{', '}'],
+                            ['[', ']'],
+                            ['(', ')']
+                        ],
+                        autoClosingPairs: [
+                            { open: '{', close: '}' },
+                            { open: '[', close: ']' },
+                            { open: '(', close: ')' },
+                            { open: '"', close: '"' },
+                            { open: "'", close: "'" }
+                        ],
+                        surroundingPairs: [
+                            { open: '{', close: '}' },
+                            { open: '[', close: ']' },
+                            { open: '(', close: ')' },
+                            { open: '"', close: '"' },
+                            { open: "'", close: "'" }
+                        ]
+                    });
+                    
                     monaco.languages.setMonarchTokensProvider('glsl', {
                         tokenizer: {
                             root: [
@@ -528,6 +556,21 @@ class ShaderNode extends Node {
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
                     automaticLayout: true
+                });
+
+                // Add comment keybindings
+                this.monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
+                    const action = this.monacoEditor.getAction('editor.action.commentLine');
+                    if (action) {
+                        action.run();
+                    }
+                });
+                
+                this.monacoEditor.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyA, () => {
+                    const action = this.monacoEditor.getAction('editor.action.blockComment');
+                    if (action) {
+                        action.run();
+                    }
                 });
 
                 this.code = this.monacoEditor.getValue();
