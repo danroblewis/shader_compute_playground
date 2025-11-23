@@ -16,6 +16,9 @@ class App {
         this.panning = false;
         this.panStart = { x: 0, y: 0 };
         this.panOffset = { x: 0, y: 0 };
+        this.zoom = 1.0;
+        this.zoomMin = 0.1;
+        this.zoomMax = 5.0;
         
         this.nodeIdCounter = 0;
         this.textureBufferCounter = 0;
@@ -46,6 +49,7 @@ class App {
         this.canvas.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        this.canvas.addEventListener('wheel', (e) => this.onCanvasWheel(e), { passive: false });
         
         // Global mouse events for dragging (so dragging works even outside canvas)
         document.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
@@ -696,10 +700,11 @@ class App {
             const toRect = toPort.getBoundingClientRect();
             const containerRect = this.nodeContainer.getBoundingClientRect();
 
-            const x1 = fromRect.left + fromRect.width / 2 - containerRect.left;
-            const y1 = fromRect.top + fromRect.height / 2 - containerRect.top;
-            const x2 = toRect.left + toRect.width / 2 - containerRect.left;
-            const y2 = toRect.top + toRect.height / 2 - containerRect.top;
+            // Calculate coordinates relative to container, then divide by zoom to get SVG coordinates
+            const x1 = (fromRect.left + fromRect.width / 2 - containerRect.left) / this.zoom;
+            const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / this.zoom;
+            const x2 = (toRect.left + toRect.width / 2 - containerRect.left) / this.zoom;
+            const y2 = (toRect.top + toRect.height / 2 - containerRect.top) / this.zoom;
 
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             const dx = x2 - x1;
@@ -768,10 +773,11 @@ class App {
             if (fromPort) {
                 const fromRect = fromPort.getBoundingClientRect();
                 const containerRect = this.nodeContainer.getBoundingClientRect();
-                const x1 = fromRect.left + fromRect.width / 2 - containerRect.left;
-                const y1 = fromRect.top + fromRect.height / 2 - containerRect.top;
-                const x2 = e.clientX - containerRect.left;
-                const y2 = e.clientY - containerRect.top;
+                // Divide by zoom to get SVG coordinates
+                const x1 = (fromRect.left + fromRect.width / 2 - containerRect.left) / this.zoom;
+                const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / this.zoom;
+                const x2 = (e.clientX - containerRect.left) / this.zoom;
+                const y2 = (e.clientY - containerRect.top) / this.zoom;
 
                 const dx = x2 - x1;
                 const cp1x = x1 + dx * 0.5;
@@ -821,6 +827,34 @@ class App {
                 this.canvas.style.cursor = '';
             }
         }
+    }
+
+    onCanvasWheel(e) {
+        // Only zoom when scrolling on background (not on a node)
+        const clickedNode = this.nodes.find(node => {
+            const rect = node.element.getBoundingClientRect();
+            return e.clientX >= rect.left && e.clientX <= rect.right &&
+                   e.clientY >= rect.top && e.clientY <= rect.bottom;
+        });
+        
+        if (clickedNode) return; // Don't zoom if scrolling over a node
+        
+        e.preventDefault();
+        
+        // Calculate zoom delta (negative deltaY = zoom in, positive = zoom out)
+        const zoomDelta = -e.deltaY * 0.001; // Adjust sensitivity
+        const newZoom = Math.max(this.zoomMin, Math.min(this.zoomMax, this.zoom + zoomDelta));
+        
+        if (newZoom !== this.zoom) {
+            this.zoom = newZoom;
+            this.applyZoom();
+        }
+    }
+    
+    applyZoom() {
+        // Apply zoom transform to node container (this will also scale the connection SVG inside it)
+        this.nodeContainer.style.transform = `scale(${this.zoom})`;
+        this.nodeContainer.style.transformOrigin = 'top left';
     }
 
     onCanvasMouseUp(e) {
