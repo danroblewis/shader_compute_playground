@@ -172,6 +172,7 @@ class TextureBufferNode extends Node {
                     edge.to.updateHeader(window.app.graph);
                 }
             }
+            window.app.saveState(); // Save after name change
         }
     }
 
@@ -246,6 +247,14 @@ class TextureBufferNode extends Node {
 
             // Update preview
             this.updatePreview();
+            
+            // Save state after drawing (debounced)
+            if (window.app && !this.saveTimeout) {
+                this.saveTimeout = setTimeout(() => {
+                    window.app.saveState();
+                    this.saveTimeout = null;
+                }, 1000); // Save 1 second after drawing stops
+            }
         }
     }
 
@@ -255,6 +264,11 @@ class TextureBufferNode extends Node {
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.textureWidth, this.textureHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
         this.updatePreview();
+        
+        // Save state after clear
+        if (window.app) {
+            window.app.saveState();
+        }
     }
 
     promptResize() {
@@ -324,6 +338,11 @@ class TextureBufferNode extends Node {
         // Render source texture to this texture
         this.webglManager.renderToTexture(this.texture, program, { u_texture: texture });
         this.updatePreview();
+        
+        // Save state after texture update
+        if (window.app) {
+            window.app.saveState();
+        }
     }
 }
 
@@ -507,7 +526,7 @@ class ShaderNode extends Node {
                 }
 
                 this.monacoEditor = monaco.editor.create(editorContainer, {
-                    value: 'vec4 output() {\n    return texture(input0, v_texCoord);\n}',
+                    value: 'vec4 output() {\n    return vec4(1.0, 0.0, 0.0, 1.0);\n}',
                     language: 'glsl',
                     theme: 'vs-dark',
                     fontSize: 12,
@@ -521,7 +540,22 @@ class ShaderNode extends Node {
                 this.monacoEditor.onDidChangeModelContent(() => {
                     this.code = this.monacoEditor.getValue();
                     // updateHeader will be called with graph when connections change
+                    // Save state after code change (debounced)
+                    if (window.app) {
+                        if (this.saveCodeTimeout) {
+                            clearTimeout(this.saveCodeTimeout);
+                        }
+                        this.saveCodeTimeout = setTimeout(() => {
+                            window.app.saveState();
+                            this.saveCodeTimeout = null;
+                        }, 1000); // Save 1 second after typing stops
+                    }
                 });
+
+                // Update header after Monaco is initialized
+                if (window.app && window.app.graph) {
+                    this.updateHeader(window.app.graph);
+                }
             } catch (error) {
                 console.error('Error creating Monaco editor:', error);
                 setTimeout(() => this.initMonaco(), 200);

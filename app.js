@@ -30,6 +30,9 @@ class App {
         // Initialize WebGL
         this.webglManager.init(this.canvas);
         
+        // Load saved state now that WebGL is ready
+        this.loadState();
+        
         // Setup connection line SVG
         this.setupConnectionLine();
         
@@ -62,6 +65,220 @@ class App {
         
         // Graph evaluation loop
         this.evaluateGraph();
+        
+        // Set up auto-save
+        this.setupAutoSave();
+    }
+
+    setupAutoSave() {
+        // Save state periodically and on changes
+        setInterval(() => this.saveState(), 2000);
+        
+        // Also save on beforeunload
+        window.addEventListener('beforeunload', () => this.saveState());
+    }
+
+    saveState() {
+        try {
+            const state = {
+                nodes: this.nodes.map(node => {
+                    const nodeData = {
+                        id: node.id,
+                        type: node.type,
+                        x: node.particle.x,
+                        y: node.particle.y,
+                        width: node.particle.width,
+                        height: node.particle.height,
+                        name: node.name
+                    };
+                    
+                    if (node.type === 'texture-buffer') {
+                        nodeData.textureWidth = node.textureWidth;
+                        nodeData.textureHeight = node.textureHeight;
+                        // Save texture data as base64
+                        const gl = this.webglManager.gl;
+                        const tempFBO = gl.createFramebuffer();
+                        gl.bindFramebuffer(gl.FRAMEBUFFER, tempFBO);
+                        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, node.texture, 0);
+                        const pixels = new Uint8Array(node.textureWidth * node.textureHeight * 4);
+                        gl.readPixels(0, 0, node.textureWidth, node.textureHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+                        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                        gl.deleteFramebuffer(tempFBO);
+                        nodeData.textureData = Array.from(pixels);
+                    } else if (node.type === 'shader') {
+                        nodeData.code = node.code || (node.monacoEditor ? node.monacoEditor.getValue() : '');
+                        nodeData.inputs = node.inputs.map(inp => ({ name: inp.name, port: inp.port }));
+                        nodeData.outputs = node.outputs.map(out => ({ name: out.name, port: out.port }));
+                    }
+                    
+                    return nodeData;
+                }),
+                edges: this.graph.edges.map(edge => ({
+                    fromId: edge.from.id,
+                    fromPort: edge.fromPort,
+                    toId: edge.to.id,
+                    toPort: edge.toPort
+                })),
+                counters: {
+                    nodeId: this.nodeIdCounter,
+                    textureBuffer: this.textureBufferCounter,
+                    shader: this.shaderCounter
+                }
+            };
+            
+            localStorage.setItem('shaderPlaygroundState', JSON.stringify(state));
+        } catch (error) {
+            console.error('Error saving state:', error);
+        }
+    }
+
+    loadState() {
+        try {
+            const saved = localStorage.getItem('shaderPlaygroundState');
+            if (!saved) return;
+            
+            const state = JSON.parse(saved);
+            
+            // Restore counters
+            this.nodeIdCounter = state.counters?.nodeId || 0;
+            this.textureBufferCounter = state.counters?.textureBuffer || 0;
+            this.shaderCounter = state.counters?.shader || 0;
+            
+            // Create a map to store nodes by ID for connection restoration
+            const nodeMap = new Map();
+            
+            // Restore nodes
+            if (state.nodes) {
+                for (const nodeData of state.nodes) {
+                    let node;
+                    
+                    if (nodeData.type === 'texture-buffer') {
+                        node = new TextureBufferNode(
+                            nodeData.id,
+                            nodeData.x,
+                            nodeData.y,
+                            this.physics,
+                            this.webglManager,
+                            nodeData.textureWidth || 512,
+                            nodeData.textureHeight || 512,
+                            nodeData.name || 'tex_0'
+                        );
+                        
+                        // Restore texture data if available
+                        if (nodeData.textureData) {
+                            const gl = this.webglManager.gl;
+                            const pixels = new Uint8Array(nodeData.textureData);
+                            gl.bindTexture(gl.TEXTURE_2D, node.texture);
+                            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, node.textureWidth, node.textureHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+                            node.updatePreview();
+                        }
+                    } else if (nodeData.type === 'shader') {
+                        node = new ShaderNode(
+                            nodeData.id,
+                            nodeData.x,
+                            nodeData.y,
+                            this.physics,
+                            this.webglManager,
+                            nodeData.name || 'shad_0'
+                        );
+                        
+                        // Restore inputs and outputs
+                        if (nodeData.inputs) {
+                            node.inputs = nodeData.inputs;
+                            node.updatePorts();
+                        } else {
+                            node.addInput('input0');
+                        }
+                        
+                        if (nodeData.outputs) {
+                            node.outputs = nodeData.outputs;
+                            node.updatePorts();
+                        } else {
+                            node.addOutput('output0');
+                        }
+                        
+                        // Restore shader code
+                        if (nodeData.code) {
+                            node.code = nodeData.code;
+                            // Wait for Monaco to be ready, then set the code
+                            setTimeout(() => {
+                                if (node.monacoEditor) {
+                                    node.monacoEditor.setValue(nodeData.code);
+                                    // Update header after code is set
+                                    if (this.graph) {
+                                        node.updateHeader(this.graph);
+                                    }
+                                } else {
+                                    // Retry if Monaco isn't ready yet
+                                    const checkMonaco = setInterval(() => {
+                                        if (node.monacoEditor) {
+                                            node.monacoEditor.setValue(nodeData.code);
+                                            // Update header after code is set
+                                            if (this.graph) {
+                                                node.updateHeader(this.graph);
+                                            }
+                                            clearInterval(checkMonaco);
+                                        }
+                                    }, 100);
+                                    setTimeout(() => clearInterval(checkMonaco), 5000);
+                                }
+                            }, 500);
+                        }
+                    }
+                    
+                    if (node) {
+                        // Restore position and size
+                        node.particle.x = nodeData.x;
+                        node.particle.y = nodeData.y;
+                        node.setSize(nodeData.width || 200, nodeData.height || 200);
+                        node.updatePosition();
+                        
+                        // Restore name display
+                        const titleEl = node.element.querySelector(`[data-node-title="${node.id}"]`);
+                        if (titleEl) {
+                            titleEl.textContent = nodeData.name || node.name;
+                        }
+                        
+                        this.nodes.push(node);
+                        this.graph.addNode(node);
+                        this.nodeContainer.appendChild(node.element);
+                        this.setupNodeEvents(node);
+                        nodeMap.set(nodeData.id, node);
+                    }
+                }
+            }
+            
+            // Restore connections
+            if (state.edges) {
+                for (const edgeData of state.edges) {
+                    const fromNode = nodeMap.get(edgeData.fromId);
+                    const toNode = nodeMap.get(edgeData.toId);
+                    
+                    if (fromNode && toNode) {
+                        // Ensure ports exist
+                        if (toNode.type === 'shader') {
+                            while (toNode.inputs.length <= edgeData.toPort) {
+                                toNode.addInput(`input${toNode.inputs.length}`);
+                            }
+                        }
+                        
+                        this.graph.addEdge(fromNode, edgeData.fromPort, toNode, edgeData.toPort);
+                    }
+                }
+                this.updateConnections();
+            }
+            
+            // Update shader headers after a delay to ensure everything is initialized
+            setTimeout(() => {
+                this.nodes.forEach(node => {
+                    if (node.type === 'shader') {
+                        node.updateHeader(this.graph);
+                    }
+                });
+            }, 1000); // Wait for Monaco editors to initialize
+        } catch (error) {
+            console.error('Error loading state:', error);
+        }
     }
 
     resizeCanvas() {
@@ -106,6 +323,7 @@ class App {
         this.graph.addNode(node);
         this.nodeContainer.appendChild(node.element);
         this.setupNodeEvents(node);
+        this.saveState(); // Save after creating node
         return node;
     }
 
@@ -123,6 +341,7 @@ class App {
         this.graph.addNode(node);
         this.nodeContainer.appendChild(node.element);
         this.setupNodeEvents(node);
+        this.saveState(); // Save after creating node
         return node;
     }
 
@@ -297,6 +516,8 @@ class App {
         if (node.type === 'shader') {
             node.updateHeader(this.graph);
         }
+        
+        this.saveState(); // Save after deleting connection
     }
 
     createConnection(fromNode, fromPort, toNode, toPort) {
@@ -338,6 +559,7 @@ class App {
             toNode.updateHeader(this.graph);
         }
         
+        this.saveState(); // Save after creating connection
         return edge;
     }
 
@@ -582,6 +804,8 @@ class App {
             connectedShaders.forEach(shaderNode => {
                 shaderNode.updateHeader(this.graph);
             });
+            
+            this.saveState(); // Save after deleting node
         }
     }
 
