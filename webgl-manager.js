@@ -349,5 +349,83 @@ class WebGLManager {
         const height = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_HEIGHT);
         return { width, height };
     }
+
+    renderTextureToOverlay(texture, overlayCanvas, x, y, width, height, texWidth, texHeight) {
+        const gl = this.gl;
+        
+        // Get or create preview shader program
+        let program = this.programs.get('preview');
+        if (!program) {
+            const vertexSource = `#version 300 es
+                in vec2 a_position;
+                in vec2 a_texCoord;
+                out vec2 v_texCoord;
+                void main() {
+                    gl_Position = vec4(a_position, 0.0, 1.0);
+                    v_texCoord = a_texCoord;
+                }
+            `;
+            const fragmentSource = `#version 300 es
+                precision mediump float;
+                in vec2 v_texCoord;
+                uniform sampler2D u_texture;
+                out vec4 fragColor;
+                void main() {
+                    fragColor = texture(u_texture, v_texCoord);
+                }
+            `;
+            program = this.createProgram(vertexSource, fragmentSource);
+            this.programs.set('preview', program);
+        }
+        
+        // Save current state
+        const prevFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevViewport = gl.getParameter(gl.VIEWPORT);
+        const prevProgram = gl.getParameter(gl.CURRENT_PROGRAM);
+        const prevVAO = gl.getParameter(gl.VERTEX_ARRAY_BINDING);
+        const prevActiveTexture = gl.getParameter(gl.ACTIVE_TEXTURE);
+        const prevTexture0 = gl.getParameter(gl.TEXTURE_BINDING_2D);
+        
+        // Bind overlay canvas as render target (default framebuffer)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        
+        // Calculate viewport coordinates (WebGL uses bottom-left origin, but we need top-left)
+        const dpr = window.devicePixelRatio || 1;
+        const overlayHeight = overlayCanvas.height;
+        const viewportX = x * dpr;
+        const viewportY = overlayHeight - (y + height) * dpr; // Flip Y coordinate
+        const viewportWidth = width * dpr;
+        const viewportHeight = height * dpr;
+        
+        gl.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
+        
+        gl.useProgram(program);
+        gl.bindVertexArray(this.quadVAO);
+        
+        // Bind texture with nearest-neighbor filtering for pixelated rendering
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        const currentMinFilter = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER);
+        const currentMagFilter = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        
+        const textureLocation = gl.getUniformLocation(program, 'u_texture');
+        gl.uniform1i(textureLocation, 0);
+        
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Restore texture filters
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, currentMinFilter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, currentMagFilter);
+        
+        // Restore state
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFramebuffer);
+        gl.viewport(...prevViewport);
+        gl.useProgram(prevProgram);
+        gl.bindVertexArray(prevVAO);
+        gl.activeTexture(prevActiveTexture);
+        gl.bindTexture(gl.TEXTURE_2D, prevTexture0);
+    }
 }
 

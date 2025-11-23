@@ -1,6 +1,6 @@
 class App {
     constructor() {
-        this.canvas = document.getElementById('main-canvas');
+        this.previewOverlay = document.getElementById('preview-overlay');
         this.nodeContainer = document.getElementById('node-container');
         this.physics = new PhysicsEngine();
         this.webglManager = new WebGLManager();
@@ -40,8 +40,11 @@ class App {
     }
 
     init() {
-        // Initialize WebGL (canvas only needs to exist for context, doesn't need to be visible or full-screen)
-        this.webglManager.init(this.canvas);
+        // Initialize WebGL using the overlay canvas as the main context
+        this.webglManager.init(this.previewOverlay);
+        
+        // Setup preview overlay canvas
+        this.setupPreviewOverlay();
         
         // Load saved state now that WebGL is ready
         this.loadState();
@@ -398,6 +401,26 @@ class App {
         }
     }
 
+    setupPreviewOverlay() {
+        // The overlay canvas is now the main WebGL context
+        // Set up resize handler
+        const resizeOverlay = () => {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = this.previewOverlay.getBoundingClientRect();
+            this.previewOverlay.width = rect.width * dpr;
+            this.previewOverlay.height = rect.height * dpr;
+            this.previewOverlay.style.width = `${rect.width}px`;
+            this.previewOverlay.style.height = `${rect.height}px`;
+            
+            const gl = this.webglManager.gl;
+            if (gl) {
+                gl.viewport(0, 0, this.previewOverlay.width, this.previewOverlay.height);
+            }
+        };
+        
+        resizeOverlay();
+        window.addEventListener('resize', resizeOverlay);
+    }
 
     setupConnectionLine() {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

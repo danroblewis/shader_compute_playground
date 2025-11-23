@@ -442,8 +442,25 @@ class TextureBufferNode extends Node {
     }
 
     updatePreview() {
-        if (this.previewCanvas) {
-            this.webglManager.renderTextureToCanvas(this.texture, this.previewCanvas, this.textureWidth, this.textureHeight);
+        if (this.previewCanvas && window.app && window.app.previewOverlay) {
+            // Get the position of the preview canvas relative to the overlay
+            const canvasRect = this.previewCanvas.getBoundingClientRect();
+            const overlayRect = window.app.previewOverlay.getBoundingClientRect();
+            
+            // Calculate position relative to overlay
+            const x = canvasRect.left - overlayRect.left;
+            const y = canvasRect.top - overlayRect.top;
+            const width = canvasRect.width;
+            const height = canvasRect.height;
+            
+            // Render directly to overlay canvas using viewport (no readPixels!)
+            this.webglManager.renderTextureToOverlay(
+                this.texture,
+                window.app.previewOverlay,
+                x, y, width, height,
+                this.textureWidth,
+                this.textureHeight
+            );
             
             // Update FPS tracking for this preview
             this.previewFrameCount++;
