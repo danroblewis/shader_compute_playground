@@ -2,6 +2,7 @@ class WebGLManager {
     constructor() {
         this.gl = null;
         this.textures = new Map();
+        this.textureDimensions = new Map(); // Store texture dimensions
         this.framebuffers = new Map();
         this.programs = new Map();
         this.quadBuffer = null;
@@ -56,6 +57,9 @@ class WebGLManager {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         
+        // Store texture dimensions
+        this.textureDimensions.set(texture, { width, height });
+        
         return texture;
     }
 
@@ -107,15 +111,11 @@ class WebGLManager {
 
     renderToTexture(texture, program, inputTextures = {}, uniforms = {}) {
         const gl = this.gl;
-        const width = gl.getParameter(gl.TEXTURE_BINDING_2D) ? 
-            gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WIDTH) : 512;
-        const height = gl.getParameter(gl.TEXTURE_BINDING_2D) ? 
-            gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_HEIGHT) : 512;
-
-        // Get texture dimensions
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        const texWidth = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WIDTH);
-        const texHeight = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_HEIGHT);
+        
+        // Get texture dimensions from our stored map
+        const dims = this.textureDimensions.get(texture) || { width: 512, height: 512 };
+        const texWidth = dims.width;
+        const texHeight = dims.height;
 
         // Create framebuffer if needed
         let framebuffer = this.framebuffers.get(texture);
@@ -164,14 +164,10 @@ class WebGLManager {
         gl.bindVertexArray(null);
     }
 
-    renderTextureToCanvas(texture, canvas, scale = 1.0) {
+    renderTextureToCanvas(texture, canvas, texWidth = 512, texHeight = 512, scale = 1.0) {
         const gl = this.gl;
         const width = canvas.width;
         const height = canvas.height;
-
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        const texWidth = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WIDTH);
-        const texHeight = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_HEIGHT);
 
         // Use a simple passthrough shader
         const vertexSource = `#version 300 es

@@ -91,13 +91,27 @@ class Graph {
     evaluate(webglManager, iteration = 0) {
         const { order, cycles } = this.getEvaluationOrder();
         
-        // Evaluate nodes in topological order
+        // Evaluate nodes in topological order (nodes with no dependencies first)
         for (const node of order) {
             if (node.type === 'shader') {
+                // Shader nodes: evaluate and render to output texture
                 node.evaluate(webglManager, this);
+                
+                // Update connected texture buffers automatically
+                const outgoingEdges = this.getEdgesFrom(node);
+                for (const edge of outgoingEdges) {
+                    const targetNode = edge.to;
+                    if (targetNode.type === 'texture-buffer') {
+                        // The shader already rendered to the texture buffer's texture
+                        // Just update the preview
+                        targetNode.updatePreview();
+                    }
+                }
             } else if (node.type === 'texture-buffer') {
-                // Update texture buffer from input connections
+                // Texture buffers: update from input connections
                 this.updateTextureBufferInput(node);
+                // Update preview after input is set
+                node.updatePreview();
             }
         }
 
@@ -134,8 +148,18 @@ class Graph {
             for (const node of Array.from(cycleNodes)) {
                 if (node.type === 'shader') {
                     node.evaluate(webglManager, this);
+                    
+                    // Update connected texture buffers automatically
+                    const outgoingEdges = this.getEdgesFrom(node);
+                    for (const edge of outgoingEdges) {
+                        const targetNode = edge.to;
+                        if (targetNode.type === 'texture-buffer') {
+                            targetNode.updatePreview();
+                        }
+                    }
                 } else if (node.type === 'texture-buffer') {
                     this.updateTextureBufferInput(node);
+                    node.updatePreview();
                 }
             }
         }

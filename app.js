@@ -95,16 +95,10 @@ class App {
                     if (node.type === 'texture-buffer') {
                         nodeData.textureWidth = node.textureWidth;
                         nodeData.textureHeight = node.textureHeight;
-                        // Save texture data as base64
-                        const gl = this.webglManager.gl;
-                        const tempFBO = gl.createFramebuffer();
-                        gl.bindFramebuffer(gl.FRAMEBUFFER, tempFBO);
-                        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, node.texture, 0);
-                        const pixels = new Uint8Array(node.textureWidth * node.textureHeight * 4);
-                        gl.readPixels(0, 0, node.textureWidth, node.textureHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-                        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-                        gl.deleteFramebuffer(tempFBO);
-                        nodeData.textureData = Array.from(pixels);
+                        // Don't save texture pixel data - it's too large for localStorage
+                        // Texture data will be regenerated from shader computations on load
+                        // Only save if it's a manually drawn texture (we could add a flag for this later)
+                        nodeData.textureData = null; // Skip saving texture data to avoid quota issues
                     } else if (node.type === 'shader') {
                         nodeData.code = node.code || (node.monacoEditor ? node.monacoEditor.getValue() : '');
                         nodeData.inputs = node.inputs.map(inp => ({ name: inp.name, port: inp.port }));
@@ -164,14 +158,13 @@ class App {
                             nodeData.name || 'tex_0'
                         );
                         
-                        // Restore texture data if available
-                        if (nodeData.textureData) {
-                            const gl = this.webglManager.gl;
-                            const pixels = new Uint8Array(nodeData.textureData);
-                            gl.bindTexture(gl.TEXTURE_2D, node.texture);
-                            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, node.textureWidth, node.textureHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-                            node.updatePreview();
-                        }
+                        // Don't restore texture data - textures will be regenerated from shader computations
+                        // Initialize with empty texture (black)
+                        const gl = this.webglManager.gl;
+                        const data = new Uint8Array(node.textureWidth * node.textureHeight * 4);
+                        gl.bindTexture(gl.TEXTURE_2D, node.texture);
+                        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, node.textureWidth, node.textureHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+                        // Preview will be updated after graph evaluation
                     } else if (nodeData.type === 'shader') {
                         node = new ShaderNode(
                             nodeData.id,
@@ -275,6 +268,17 @@ class App {
                         node.updateHeader(this.graph);
                     }
                 });
+                
+                // Evaluate graph once to regenerate textures from shaders
+                setTimeout(() => {
+                    this.graph.evaluate(this.webglManager, 0);
+                    // Update all texture buffer previews
+                    this.nodes.forEach(node => {
+                        if (node.type === 'texture-buffer') {
+                            node.updatePreview();
+                        }
+                    });
+                }, 500);
             }, 1000); // Wait for Monaco editors to initialize
         } catch (error) {
             console.error('Error loading state:', error);
@@ -568,7 +572,8 @@ class App {
         const oldConnections = this.nodeContainer.querySelectorAll('.connection-line path:not(:first-child)');
         oldConnections.forEach(c => c.remove());
 
-        const svg = this.connectionLine.parentElement;
+        const svg = this.connectionLine?.parentElement;
+        if (!svg) return; // Connection line not initialized yet
         
         // Draw connections
         for (const edge of this.graph.edges) {

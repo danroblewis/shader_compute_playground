@@ -248,13 +248,9 @@ class TextureBufferNode extends Node {
             // Update preview
             this.updatePreview();
             
-            // Save state after drawing (debounced)
-            if (window.app && !this.saveTimeout) {
-                this.saveTimeout = setTimeout(() => {
-                    window.app.saveState();
-                    this.saveTimeout = null;
-                }, 1000); // Save 1 second after drawing stops
-            }
+            // Don't save state on every draw - it's too frequent and causes quota issues
+            // State will be saved periodically by the auto-save mechanism
+            // Drawing operations don't need to be persisted (they're manual edits)
         }
     }
 
@@ -291,7 +287,7 @@ class TextureBufferNode extends Node {
 
     updatePreview() {
         if (this.previewCanvas) {
-            this.webglManager.renderTextureToCanvas(this.texture, this.previewCanvas);
+            this.webglManager.renderTextureToCanvas(this.texture, this.previewCanvas, this.textureWidth, this.textureHeight);
         }
     }
 
@@ -339,10 +335,8 @@ class TextureBufferNode extends Node {
         this.webglManager.renderToTexture(this.texture, program, { u_texture: texture });
         this.updatePreview();
         
-        // Save state after texture update
-        if (window.app) {
-            window.app.saveState();
-        }
+        // Don't save state on every texture update - it's too frequent and causes quota issues
+        // State will be saved periodically by the auto-save mechanism
     }
 }
 
@@ -526,7 +520,7 @@ class ShaderNode extends Node {
                 }
 
                 this.monacoEditor = monaco.editor.create(editorContainer, {
-                    value: 'vec4 output() {\n    return vec4(1.0, 0.0, 0.0, 1.0);\n}',
+                    value: 'vec4 compute() {\n    return vec4(1.0, 0.0, 0.0, 1.0);\n}',
                     language: 'glsl',
                     theme: 'vs-dark',
                     fontSize: 12,
@@ -627,7 +621,7 @@ ${inputDeclarations}in vec2 v_texCoord;
 out vec4 fragColor;
 `;
 
-        const bottomCode = `void main() { fragColor = output(); }`;
+        const bottomCode = `void main() { fragColor = compute(); }`;
 
         headerTopEl.textContent = topCode;
         headerBottomEl.textContent = bottomCode;
@@ -720,23 +714,22 @@ out vec4 fragColor;
         const incomingEdges = graph.getEdgesTo(this);
         
         for (const edge of incomingEdges) {
-            const inputIndex = this.inputs.findIndex(inp => inp.port === edge.toPort);
-            if (inputIndex >= 0) {
-                const sourceNode = edge.from;
-                let sourceTexture = null;
-                let uniformName = `input${inputIndex}`;
-                
-                if (sourceNode.type === 'texture-buffer') {
-                    sourceTexture = sourceNode.getOutputTexture();
-                    uniformName = sourceNode.name; // Use texture buffer name
-                } else if (sourceNode.type === 'shader') {
-                    sourceTexture = sourceNode.getOutputTexture(edge.fromPort);
-                    // Keep default name for shader outputs
-                }
-                
-                if (sourceTexture) {
-                    inputTextures[uniformName] = sourceTexture;
-                }
+            const sourceNode = edge.from;
+            let sourceTexture = null;
+            let uniformName = null;
+            
+            if (sourceNode.type === 'texture-buffer') {
+                sourceTexture = sourceNode.getOutputTexture();
+                uniformName = sourceNode.name; // Use texture buffer name
+            } else if (sourceNode.type === 'shader') {
+                sourceTexture = sourceNode.getOutputTexture(edge.fromPort);
+                // For shader outputs, we need to find the uniform name from the header
+                // The uniform name is based on the port number
+                uniformName = `input${edge.toPort}`;
+            }
+            
+            if (sourceTexture && uniformName) {
+                inputTextures[uniformName] = sourceTexture;
             }
         }
 
@@ -745,16 +738,17 @@ out vec4 fragColor;
         let targetTexture = null;
         let targetSize = { width: 512, height: 512 };
         
-        if (outgoingEdges.length > 0) {
-            const firstEdge = outgoingEdges[0];
-            const targetNode = firstEdge.to;
+        // Find the first texture buffer output, or use the first output port's target
+        for (const edge of outgoingEdges) {
+            const targetNode = edge.to;
             if (targetNode.type === 'texture-buffer') {
                 targetTexture = targetNode.texture;
                 targetSize = { width: targetNode.textureWidth, height: targetNode.textureHeight };
+                break; // Use the first texture buffer we find
             }
         }
 
-        // Create output texture if needed
+        // If no texture buffer output, create our own output texture
         if (!targetTexture) {
             if (!this.outputTexture) {
                 this.outputTexture = webglManager.createTexture(targetSize.width, targetSize.height);
@@ -784,24 +778,30 @@ out vec4 fragColor;
                 this.lastCode = this.code;
             }
 
+            // Render shader output to target texture
             webglManager.renderToTexture(targetTexture, this.program, inputTextures);
             
-            // Update header with current connections
-            this.updateHeader(graph);
-            
-            // Update connected texture buffers
-            for (const edge of outgoingEdges) {
-                const targetNode = edge.to;
-                if (targetNode.type === 'texture-buffer') {
-                    targetNode.updatePreview();
-                }
-            }
+            // Update header with current connections (only if needed)
+            // Don't update header during evaluation to avoid unnecessary work
         } catch (error) {
             console.error('Shader evaluation error:', error);
         }
     }
 
     getOutputTexture(port = 0) {
+        // If we have a direct connection to a texture buffer, return that texture
+        // Otherwise return our internal output texture
+        if (window.app && window.app.graph) {
+            const outgoingEdges = window.app.graph.getEdgesFrom(this);
+            for (const edge of outgoingEdges) {
+                if (edge.fromPort === port) {
+                    const targetNode = edge.to;
+                    if (targetNode.type === 'texture-buffer') {
+                        return targetNode.texture;
+                    }
+                }
+            }
+        }
         return this.outputTexture;
     }
 
@@ -818,7 +818,7 @@ out vec4 fragColor;
 `;
         const mainCode = `
 void main() {
-    fragColor = output();
+    fragColor = compute();
 }
 `;
         return headerCode + this.code + mainCode;
