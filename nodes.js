@@ -806,7 +806,7 @@ out vec4 fragColor;
         this.inputs.forEach((input, i) => {
             const port = document.createElement('div');
             port.className = 'port input';
-            port.style.top = `${30 + i * 30}%`;
+            port.style.top = `${20 + i * 15}%`;
             port.dataset.port = `input-${i}`;
             this.element.appendChild(port);
         });
@@ -815,7 +815,7 @@ out vec4 fragColor;
         this.outputs.forEach((output, i) => {
             const port = document.createElement('div');
             port.className = 'port output';
-            port.style.top = `${30 + i * 30}%`;
+            port.style.top = `${20 + i * 15}%`;
             port.dataset.port = `output-${i}`;
             this.element.appendChild(port);
         });

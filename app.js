@@ -309,6 +309,7 @@ class App {
         path.setAttribute('stroke-width', '2');
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke-dasharray', '5,5');
+        path.setAttribute('opacity', '0.25');
         this.connectionLine = path;
         svg.appendChild(path);
     }
@@ -604,6 +605,7 @@ class App {
             path.setAttribute('stroke', '#4a9eff');
             path.setAttribute('stroke-width', '2');
             path.setAttribute('fill', 'none');
+            path.setAttribute('opacity', '0.25');
             svg.appendChild(path);
 
             // Update port styles
