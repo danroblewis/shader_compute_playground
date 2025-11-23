@@ -26,6 +26,8 @@ class App {
         this.iteration = 0;
         this.paused = false;
         this.paletteNode = null;
+        this.time = 0; // Time in seconds since app start
+        this.seed = Math.random(); // Random seed shared by all shaders
         this.connectionsNeedUpdate = true; // Track if connections need visual update
         this.evaluationSpeedLimit = 0; // 0 = unlimited, >0 = minimum ms between evaluations
         this.lastPreviewUpdate = 0;
@@ -1147,6 +1149,12 @@ class App {
 
     evaluateGraphLoop() {
         if (!this.paused) {
+            // Update time (in seconds)
+            this.time = performance.now() / 1000.0;
+            
+            // Regenerate seed periodically (once per frame)
+            this.seed = Math.random();
+            
             // Check if physics has settled
             const settled = this.physics.particles.every(p => 
                 Math.abs(p.vx) < 0.1 && Math.abs(p.vy) < 0.1
