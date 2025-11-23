@@ -384,6 +384,11 @@ class TextureBufferNode extends Node {
     }
 
     setInputTexture(texture) {
+        // Skip if trying to copy texture to itself (performance optimization)
+        if (texture === this.texture) {
+            return; // No need to copy texture to itself
+        }
+        
         // Copy texture data using a shader to handle size differences
         const gl = this.webglManager.gl;
         
