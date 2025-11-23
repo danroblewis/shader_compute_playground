@@ -624,7 +624,9 @@ ${inputDeclarations}in vec2 v_texCoord;
 out vec4 fragColor;
 `;
 
-        const bottomCode = `void main() { fragColor = compute(); }`;
+        const bottomCode = `void main() {
+    fragColor = compute();
+}`;
 
         headerTopEl.innerHTML = this.highlightGLSL(topCode);
         headerBottomEl.innerHTML = this.highlightGLSL(bottomCode);
@@ -900,8 +902,37 @@ out vec4 fragColor;
     }
 
     getFullShaderCode() {
-        const inputDeclarations = this.inputs.length > 0 
-            ? this.inputs.map((_, i) => `uniform sampler2D input${i};`).join('\n') + '\n'
+        // Get texture buffer names from connections (same logic as updateHeader)
+        const graph = window.app ? window.app.graph : null;
+        const inputNames = {};
+        const connectedPorts = new Set();
+        
+        if (graph) {
+            const incomingEdges = graph.getEdgesTo(this);
+            for (const edge of incomingEdges) {
+                const toPort = edge.toPort;
+                connectedPorts.add(toPort);
+                
+                const sourceNode = edge.from;
+                if (sourceNode.type === 'texture-buffer') {
+                    inputNames[toPort] = sourceNode.name;
+                } else if (sourceNode.type === 'shader') {
+                    // For shader outputs, use a default name
+                    inputNames[toPort] = `input${toPort}`;
+                } else {
+                    inputNames[toPort] = `input${toPort}`;
+                }
+            }
+        }
+
+        // Generate uniform declarations for all connected ports
+        // Sort ports to ensure consistent ordering
+        const sortedPorts = Array.from(connectedPorts).sort((a, b) => a - b);
+        const inputDeclarations = sortedPorts.length > 0 
+            ? sortedPorts.map(port => {
+                const name = inputNames[port] || `input${port}`;
+                return `uniform sampler2D ${name};`;
+            }).join('\n') + '\n'
             : '';
         
         const headerCode = `#version 300 es
