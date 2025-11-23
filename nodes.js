@@ -142,8 +142,7 @@ class TextureBufferNode extends Node {
                 this.previewCanvas.height = unscaledHeight * dpr;
                 this.previewCanvas.style.width = `${unscaledWidth}px`;
                 this.previewCanvas.style.height = `${unscaledHeight}px`;
-                // Update preview after canvas size changes
-                this.updatePreview();
+                // Preview will be updated by the animation loop at 60 FPS
             }
         };
         // Update after a short delay to ensure container is rendered
@@ -324,8 +323,8 @@ class TextureBufferNode extends Node {
             gl.bindTexture(gl.TEXTURE_2D, this.texture);
             gl.texSubImage2D(gl.TEXTURE_2D, 0, startX, startY, actualWidth, actualHeight, gl.RGBA, gl.UNSIGNED_BYTE, actualData);
 
-            // Update preview
-            this.updatePreview();
+            // Don't update preview on every draw - it's expensive and causes stuttering
+            // Preview will be updated by the animation loop at 60 FPS
             
             // Don't save state on every draw - it's too frequent and causes quota issues
             // State will be saved periodically by the auto-save mechanism
@@ -338,7 +337,7 @@ class TextureBufferNode extends Node {
         const data = new Uint8Array(this.textureWidth * this.textureHeight * 4);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.textureWidth, this.textureHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-        this.updatePreview();
+        // Preview will be updated by the animation loop at 60 FPS
         
         // Save state after clear
         if (window.app) {
@@ -360,7 +359,7 @@ class TextureBufferNode extends Node {
         
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.textureWidth, this.textureHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-        this.updatePreview();
+        // Preview will be updated by the animation loop at 60 FPS
         
         // Save state after randomize
         if (window.app) {
@@ -383,7 +382,7 @@ class TextureBufferNode extends Node {
         gl.deleteTexture(this.texture);
         this.texture = this.webglManager.createTexture(width, height);
         this.element.querySelector('.texture-info').textContent = `${width}×${height}`;
-        this.updatePreview();
+        // Preview will be updated by the animation loop at 60 FPS
     }
     
     setSize(width, height) {
@@ -511,7 +510,7 @@ class TextureBufferNode extends Node {
 
         // Render source texture to this texture
         this.webglManager.renderToTexture(this.texture, program, { u_texture: texture });
-        this.updatePreview();
+        // Preview will be updated by the animation loop at 60 FPS
         
         // Don't save state on every texture update - it's too frequent and causes quota issues
         // State will be saved periodically by the auto-save mechanism
