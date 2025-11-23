@@ -127,6 +127,8 @@ class App {
         // Drag
         header.addEventListener('mousedown', (e) => {
             if (e.target.closest('.port')) return;
+            // Don't start drag if clicking on editable title
+            if (e.target.contentEditable === 'true') return;
             if (e.button === 0) { // Only left mouse button
                 this.startDrag(node, e);
                 e.stopPropagation();
@@ -150,21 +152,40 @@ class App {
             }
         });
         
-        node.element.addEventListener('mouseenter', (e) => {
-            const port = e.target.closest('.port');
-            if (port && this.connectingFrom && port.classList.contains('input')) {
-                port.style.background = '#5a9eff';
-                port.style.borderColor = '#7bb6ff';
-            }
-        }, true);
+        // Attach hover listeners to existing ports and set up observer for new ones
+        const attachPortHoverListeners = (ports) => {
+            ports.forEach(port => {
+                port.addEventListener('mouseenter', () => {
+                    if (this.connectingFrom && port.classList.contains('input')) {
+                        port.style.background = '#5a9eff';
+                        port.style.borderColor = '#7bb6ff';
+                    }
+                });
+                
+                port.addEventListener('mouseleave', () => {
+                    if (this.connectingFrom && port.classList.contains('input')) {
+                        port.style.background = '';
+                        port.style.borderColor = '';
+                    }
+                });
+            });
+        };
         
-        node.element.addEventListener('mouseleave', (e) => {
-            const port = e.target.closest('.port');
-            if (port && this.connectingFrom && port.classList.contains('input')) {
-                port.style.background = '';
-                port.style.borderColor = '';
-            }
-        }, true);
+        // Attach to existing ports
+        attachPortHoverListeners(node.element.querySelectorAll('.port'));
+        
+        // Watch for new ports being added
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === 1 && node.classList && node.classList.contains('port')) {
+                        attachPortHoverListeners([node]);
+                    }
+                });
+            });
+        });
+        
+        observer.observe(node.element, { childList: true, subtree: true });
 
         // Selection
         node.element.addEventListener('mousedown', (e) => {
@@ -247,6 +268,12 @@ class App {
 
         const edge = this.graph.addEdge(fromNode, fromPort, toNode, toPort);
         this.updateConnections();
+        
+        // Update shader node headers if connected to a shader
+        if (toNode.type === 'shader') {
+            toNode.updateHeader(this.graph);
+        }
+        
         return edge;
     }
 

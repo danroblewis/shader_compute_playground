@@ -56,6 +56,7 @@ class TextureBufferNode extends Node {
         this.previewCanvas = null;
         this.isDrawing = false;
         this.drawContext = null;
+        this.name = 'Texture Buffer';
         
         // Set proper size for texture buffer node (needs space for header, preview, and controls)
         // Header: ~40px, Preview: 200px, Controls: ~40px, Padding: 24px = ~304px minimum
@@ -73,7 +74,7 @@ class TextureBufferNode extends Node {
         
         div.innerHTML = `
             <div class="node-header">
-                <span class="node-title">Texture Buffer</span>
+                <span class="node-title" contenteditable="true" data-node-title="${this.id}">${this.name}</span>
                 <span class="node-type">Buffer</span>
             </div>
             <div class="node-content texture-buffer-node">
@@ -120,7 +121,58 @@ class TextureBufferNode extends Node {
         div.querySelector('[data-action="clear"]').addEventListener('click', () => this.clear());
         div.querySelector('[data-action="resize"]').addEventListener('click', () => this.promptResize());
 
+        // Make title editable
+        const titleEl = div.querySelector(`[data-node-title="${this.id}"]`);
+        if (titleEl) {
+            titleEl.addEventListener('blur', () => {
+                const newName = titleEl.textContent.trim() || 'Texture Buffer';
+                this.setName(newName);
+            });
+            
+            titleEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    titleEl.blur();
+                } else if (e.key === 'Escape') {
+                    titleEl.textContent = this.name;
+                    titleEl.blur();
+                }
+            });
+        }
+
         return div;
+    }
+
+    setName(name) {
+        // Sanitize name for GLSL identifier (remove spaces, special chars, ensure valid identifier)
+        let sanitizedName = name.replace(/[^a-zA-Z0-9_]/g, '_');
+        // GLSL identifiers can't start with a number
+        if (/^[0-9]/.test(sanitizedName)) {
+            sanitizedName = '_' + sanitizedName;
+        }
+        // Must have at least one character
+        if (!sanitizedName || sanitizedName === '_') {
+            sanitizedName = 'textureBuffer';
+        }
+        this.name = sanitizedName;
+        
+        // Update display (keep original for display, use sanitized for GLSL)
+        const titleEl = this.element.querySelector(`[data-node-title="${this.id}"]`);
+        if (titleEl) {
+            titleEl.textContent = name;
+        }
+        
+        // Notify connected shader nodes to update their headers
+        // We'll need access to the graph, so this will be handled when shaders re-evaluate
+        // For now, we'll trigger an update through the app if available
+        if (window.app && window.app.graph) {
+            const outgoingEdges = window.app.graph.getEdgesFrom(this);
+            for (const edge of outgoingEdges) {
+                if (edge.to.type === 'shader') {
+                    edge.to.updateHeader(window.app.graph);
+                }
+            }
+        }
     }
 
     setupDrawing() {
@@ -160,7 +212,8 @@ class TextureBufferNode extends Node {
 
         const gl = this.webglManager.gl;
         const px = Math.max(0, Math.min(this.textureWidth - 1, Math.floor(x * this.textureWidth)));
-        const py = Math.max(0, Math.min(this.textureHeight - 1, Math.floor(y * this.textureHeight)));
+        // Flip y coordinate: canvas has (0,0) at top-left, WebGL textures have (0,0) at bottom-left
+        const py = Math.max(0, Math.min(this.textureHeight - 1, this.textureHeight - 1 - Math.floor(y * this.textureHeight)));
 
         // Draw a small brush (3x3 pixels)
         const brushSize = 3;
@@ -414,7 +467,7 @@ class ShaderNode extends Node {
                 }
 
                 this.monacoEditor = monaco.editor.create(editorContainer, {
-                    value: 'vec4 output() {\n    return vec4(1.0, 0.0, 0.0, 1.0);\n}',
+                    value: 'vec4 output() {\n    return texture(input0, v_texCoord);\n}',
                     language: 'glsl',
                     theme: 'vs-dark',
                     fontSize: 12,
@@ -427,10 +480,8 @@ class ShaderNode extends Node {
 
                 this.monacoEditor.onDidChangeModelContent(() => {
                     this.code = this.monacoEditor.getValue();
-                    this.updateHeader();
+                    // updateHeader will be called with graph when connections change
                 });
-
-                this.updateHeader();
             } catch (error) {
                 console.error('Error creating Monaco editor:', error);
                 setTimeout(() => this.initMonaco(), 200);
@@ -458,27 +509,45 @@ class ShaderNode extends Node {
         }
     }
 
-    updateHeader() {
+    updateHeader(graph = null) {
         const headerTopEl = this.element.querySelector(`#shader-header-top-${this.id}`);
         const headerBottomEl = this.element.querySelector(`#shader-header-bottom-${this.id}`);
         
         if (!headerTopEl || !headerBottomEl) return;
 
+        // Get texture buffer names from connections
+        const inputNames = {};
+        if (graph) {
+            const incomingEdges = graph.getEdgesTo(this);
+            for (const edge of incomingEdges) {
+                const inputIndex = this.inputs.findIndex(inp => inp.port === edge.toPort);
+                if (inputIndex >= 0) {
+                    const sourceNode = edge.from;
+                    if (sourceNode.type === 'texture-buffer') {
+                        inputNames[inputIndex] = sourceNode.name;
+                    } else if (sourceNode.type === 'shader') {
+                        // For shader outputs, use a default name
+                        inputNames[inputIndex] = `input${inputIndex}`;
+                    }
+                }
+            }
+        }
+
+        // Generate uniform declarations using texture buffer names
         const inputDeclarations = this.inputs.length > 0 
-            ? this.inputs.map((_, i) => `uniform sampler2D input${i};`).join('\n') + '\n'
+            ? this.inputs.map((_, i) => {
+                const name = inputNames[i] || `input${i}`;
+                return `uniform sampler2D ${name};`;
+            }).join('\n') + '\n'
             : '';
         
         const topCode = `#version 300 es
 precision mediump float;
 ${inputDeclarations}in vec2 v_texCoord;
 out vec4 fragColor;
-
 `;
 
-        const bottomCode = `
-void main() {
-    fragColor = output();
-}`;
+        const bottomCode = `void main() { fragColor = output(); }`;
 
         headerTopEl.textContent = topCode;
         headerBottomEl.textContent = bottomCode;
@@ -531,7 +600,7 @@ void main() {
     addInput(name) {
         this.inputs.push({ name, port: this.inputs.length });
         this.updatePorts();
-        this.updateHeader();
+        // Header will be updated when connections are made
     }
 
     addOutput(name) {
@@ -575,15 +644,18 @@ void main() {
             if (inputIndex >= 0) {
                 const sourceNode = edge.from;
                 let sourceTexture = null;
+                let uniformName = `input${inputIndex}`;
                 
                 if (sourceNode.type === 'texture-buffer') {
                     sourceTexture = sourceNode.getOutputTexture();
+                    uniformName = sourceNode.name; // Use texture buffer name
                 } else if (sourceNode.type === 'shader') {
                     sourceTexture = sourceNode.getOutputTexture(edge.fromPort);
+                    // Keep default name for shader outputs
                 }
                 
                 if (sourceTexture) {
-                    inputTextures[`input${inputIndex}`] = sourceTexture;
+                    inputTextures[uniformName] = sourceTexture;
                 }
             }
         }
@@ -633,6 +705,9 @@ void main() {
             }
 
             webglManager.renderToTexture(targetTexture, this.program, inputTextures);
+            
+            // Update header with current connections
+            this.updateHeader(graph);
             
             // Update connected texture buffers
             for (const edge of outgoingEdges) {

@@ -83,6 +83,19 @@ body {
     font-weight: 600;
     font-size: 14px;
     color: #fff;
+    outline: none;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background 0.2s;
+}
+
+.node-title:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.node-title:focus {
+    background: rgba(255, 255, 255, 0.15);
+    outline: 1px solid #4a9eff;
 }
 
 .node-type {
