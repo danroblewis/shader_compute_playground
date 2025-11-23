@@ -842,7 +842,7 @@ class App {
         e.preventDefault();
         
         // Calculate zoom delta (negative deltaY = zoom in, positive = zoom out)
-        const zoomDelta = -e.deltaY * 0.001; // Adjust sensitivity
+        const zoomDelta = -e.deltaY * 0.0003; // Reduced sensitivity for smoother zooming
         const newZoom = Math.max(this.zoomMin, Math.min(this.zoomMax, this.zoom + zoomDelta));
         
         if (newZoom !== this.zoom) {
@@ -855,6 +855,8 @@ class App {
         // Apply zoom transform to node container (this will also scale the connection SVG inside it)
         this.nodeContainer.style.transform = `scale(${this.zoom})`;
         this.nodeContainer.style.transformOrigin = 'top left';
+        // Update connections to use correct coordinates for the new zoom level
+        this.updateConnections();
     }
 
     onCanvasMouseUp(e) {
