@@ -558,10 +558,30 @@ class App {
     removeNode(node) {
         const index = this.nodes.indexOf(node);
         if (index > -1) {
+            // Find all shader nodes that were connected to this node
+            const connectedShaders = new Set();
+            const edgesToRemove = this.graph.getEdgesFrom(node);
+            edgesToRemove.forEach(edge => {
+                if (edge.to.type === 'shader') {
+                    connectedShaders.add(edge.to);
+                }
+            });
+            const edgesFromRemove = this.graph.getEdgesTo(node);
+            edgesFromRemove.forEach(edge => {
+                if (edge.from.type === 'shader') {
+                    connectedShaders.add(edge.from);
+                }
+            });
+            
             this.nodes.splice(index, 1);
             this.graph.removeNode(node);
             node.destroy();
             this.updateConnections();
+            
+            // Update headers of all affected shader nodes
+            connectedShaders.forEach(shaderNode => {
+                shaderNode.updateHeader(this.graph);
+            });
         }
     }
 
