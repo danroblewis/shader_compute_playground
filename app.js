@@ -22,6 +22,7 @@ class App {
         this.shaderCounter = 0;
         this.iteration = 0;
         this.paused = false;
+        this.paletteNode = null;
         
         this.init();
     }
@@ -155,6 +156,9 @@ class App {
                         nodeData.code = node.code || (node.monacoEditor ? node.monacoEditor.getValue() : '');
                         nodeData.inputs = node.inputs.map(inp => ({ name: inp.name, port: inp.port }));
                         nodeData.outputs = node.outputs.map(out => ({ name: out.name, port: out.port }));
+                    } else if (node.type === 'palette') {
+                        nodeData.colors = node.colors;
+                        nodeData.selectedColorIndex = node.selectedColorIndex;
                     }
                     
                     return nodeData;
@@ -269,9 +273,41 @@ class App {
                                 }
                             }, 500);
                         }
+                    } else if (nodeData.type === 'palette') {
+                        node = new PaletteNode(
+                            nodeData.id,
+                            nodeData.x,
+                            nodeData.y,
+                            this.physics
+                        );
+                        
+                        // Restore colors and selection
+                        if (nodeData.colors) {
+                            node.colors = nodeData.colors;
+                        }
+                        if (nodeData.selectedColorIndex !== undefined) {
+                            node.selectedColorIndex = nodeData.selectedColorIndex;
+                        }
+                        if (nodeData.expanded !== undefined) {
+                            node.expanded = nodeData.expanded;
+                            // Update expand button if needed
+                            const expandBtn = node.element.querySelector('.palette-expand-btn');
+                            if (expandBtn) {
+                                expandBtn.textContent = node.expanded ? '▼' : '▶';
+                            }
+                            const controls = node.element.querySelector(`#palette-controls-${node.id}`);
+                            if (controls) {
+                                controls.style.display = node.expanded ? 'block' : 'none';
+                            }
+                        }
+                        node.renderColors();
                     }
                     
                     if (node) {
+                        // Store palette node reference
+                        if (node.type === 'palette') {
+                            this.paletteNode = node;
+                        }
                         // Restore position and size
                         node.particle.x = nodeData.x;
                         node.particle.y = nodeData.y;
@@ -399,6 +435,26 @@ class App {
         this.nodeContainer.appendChild(node.element);
         this.setupNodeEvents(node);
         this.saveState(); // Save after creating node
+        return node;
+    }
+
+    createPaletteNode(x, y) {
+        // Only allow one palette node
+        if (this.paletteNode) {
+            return this.paletteNode;
+        }
+        
+        const node = new PaletteNode(
+            `palette-${this.nodeIdCounter++}`,
+            x, y,
+            this.physics
+        );
+        this.nodes.push(node);
+        this.graph.addNode(node);
+        this.nodeContainer.appendChild(node.element);
+        this.setupNodeEvents(node);
+        this.paletteNode = node;
+        this.saveState();
         return node;
     }
 
@@ -846,6 +902,7 @@ class App {
         const items = [
             { label: 'Create Texture Buffer', action: () => this.createTextureBuffer(x, y) },
             { label: 'Create Shader Node', action: () => this.createShaderNode(x, y) },
+            { label: 'Create Palette', action: () => this.createPaletteNode(x, y) },
         ];
 
         items.forEach(item => {

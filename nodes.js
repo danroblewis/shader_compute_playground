@@ -216,14 +216,20 @@ class TextureBufferNode extends Node {
         // Flip y coordinate: canvas has (0,0) at top-left, WebGL textures have (0,0) at bottom-left
         const py = Math.max(0, Math.min(this.textureHeight - 1, this.textureHeight - 1 - Math.floor(y * this.textureHeight)));
 
+        // Get color from palette (already converted to 0-255 range)
+        let color = { r: 255, g: 255, b: 255, a: 255 };
+        if (window.app && window.app.paletteNode) {
+            color = window.app.paletteNode.getSelectedColor();
+        }
+
         // Draw a small brush (3x3 pixels)
         const brushSize = 3;
         const data = new Uint8Array(brushSize * brushSize * 4);
         for (let i = 0; i < brushSize * brushSize; i++) {
-            data[i * 4] = 255;
-            data[i * 4 + 1] = 255;
-            data[i * 4 + 2] = 255;
-            data[i * 4 + 3] = 255;
+            data[i * 4] = color.r;
+            data[i * 4 + 1] = color.g;
+            data[i * 4 + 2] = color.b;
+            data[i * 4 + 3] = color.a;
         }
 
         const startX = Math.max(0, px - Math.floor(brushSize / 2));
@@ -236,10 +242,10 @@ class TextureBufferNode extends Node {
         if (actualWidth > 0 && actualHeight > 0) {
             const actualData = new Uint8Array(actualWidth * actualHeight * 4);
             for (let i = 0; i < actualWidth * actualHeight; i++) {
-                actualData[i * 4] = 255;
-                actualData[i * 4 + 1] = 255;
-                actualData[i * 4 + 2] = 255;
-                actualData[i * 4 + 3] = 255;
+                actualData[i * 4] = color.r;
+                actualData[i * 4 + 1] = color.g;
+                actualData[i * 4 + 2] = color.b;
+                actualData[i * 4 + 3] = color.a;
             }
 
             gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -990,6 +996,229 @@ void main() {
         if (errorEl) {
             errorEl.textContent = '';
             errorEl.style.display = 'none';
+        }
+    }
+}
+
+class PaletteNode extends Node {
+    constructor(id, x, y, physics) {
+        super(id, 'palette', x, y, physics);
+        this.colors = [
+            { r: 1.0, g: 1.0, b: 1.0, a: 1.0 },
+            { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+            { r: 1.0, g: 0.0, b: 0.0, a: 1.0 },
+            { r: 0.0, g: 1.0, b: 0.0, a: 1.0 },
+            { r: 0.0, g: 0.0, b: 1.0, a: 1.0 }
+        ];
+        this.selectedColorIndex = 0;
+        this.expanded = false;
+        
+        // Size will be calculated based on number of colors
+        this.updateSize();
+        this.createElement();
+    }
+    
+    updateSize() {
+        const headerHeight = 40;
+        const padding = 24;
+        if (this.expanded) {
+            // Expanded mode: wider with edit controls
+            const colorHeight = 60; // Taller for edit controls
+            const height = headerHeight + (this.colors.length * colorHeight) + 40 + padding; // +40 for add button
+            this.setSize(400, Math.max(headerHeight + colorHeight + padding, height));
+        } else {
+            // Collapsed mode: tall and thin, just color squares
+            const colorHeight = 30; // Smaller squares
+            const height = headerHeight + (this.colors.length * colorHeight) + padding;
+            this.setSize(80, Math.max(headerHeight + colorHeight + padding, height));
+        }
+    }
+    
+    updatePosition() {
+        if (this.element && this.particle) {
+            const x = this.particle.x - this.particle.width / 2;
+            const y = this.particle.y - this.particle.height / 2;
+            this.element.style.left = `${x}px`;
+            this.element.style.top = `${y}px`;
+            // Set width from physics, but don't set min-width or height - let content determine it naturally
+            // this.element.style.width = `${this.particle.width}px`;
+            this.element.style.height = '';
+            this.element.style.minWidth = '';
+        }
+    }
+
+    createElement() {
+        const div = super.createElement();
+        div.innerHTML = `
+            <div class="node-header">
+                <span class="node-title" data-node-title="${this.id}">Palette</span>
+                <span class="node-type"></span>
+            </div>
+            <div class="node-content palette-content">
+                <div class="palette-colors" id="palette-colors-${this.id}"></div>
+                <div class="palette-controls" id="palette-controls-${this.id}" style="display: ${this.expanded ? 'block' : 'none'};">
+                    <button class="palette-add-btn" id="palette-add-${this.id}">+ Add Color</button>
+                </div>
+            </div>
+        `;
+        
+        // Add expand/collapse button to header
+        const header = div.querySelector('.node-header');
+        const expandBtn = document.createElement('button');
+        expandBtn.className = 'palette-expand-btn';
+        expandBtn.textContent = this.expanded ? '▼' : '▶';
+        expandBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleExpand();
+        });
+        header.appendChild(expandBtn);
+        
+        this.setupPalette();
+        return div;
+    }
+    
+    toggleExpand() {
+        this.expanded = !this.expanded;
+        const expandBtn = this.element.querySelector('.palette-expand-btn');
+        const controls = this.element.querySelector(`#palette-controls-${this.id}`);
+        if (expandBtn) {
+            expandBtn.textContent = this.expanded ? '▼' : '▶';
+        }
+        if (controls) {
+            controls.style.display = this.expanded ? 'block' : 'none';
+        }
+        this.updateSize();
+        this.renderColors();
+    }
+
+    setupPalette() {
+        const colorsContainer = this.element.querySelector(`#palette-colors-${this.id}`);
+        const addBtn = this.element.querySelector(`#palette-add-${this.id}`);
+        
+        addBtn.addEventListener('click', () => this.addColor());
+        this.renderColors();
+    }
+
+    renderColors() {
+        const colorsContainer = this.element.querySelector(`#palette-colors-${this.id}`);
+        colorsContainer.innerHTML = '';
+        
+        this.colors.forEach((color, index) => {
+            const colorItem = document.createElement('div');
+            colorItem.className = `palette-color-item ${index === this.selectedColorIndex ? 'selected' : ''}`;
+            
+            if (this.expanded) {
+                // Expanded view with edit controls (no name field)
+                colorItem.innerHTML = `
+                    <div class="palette-color-preview" style="background-color: rgba(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}, ${color.a})"></div>
+                    <div class="palette-color-rgba">
+                        <input type="number" class="palette-color-r" min="0" max="1" step="0.01" value="${color.r.toFixed(2)}" data-index="${index}" placeholder="R">
+                        <input type="number" class="palette-color-g" min="0" max="1" step="0.01" value="${color.g.toFixed(2)}" data-index="${index}" placeholder="G">
+                        <input type="number" class="palette-color-b" min="0" max="1" step="0.01" value="${color.b.toFixed(2)}" data-index="${index}" placeholder="B">
+                        <input type="number" class="palette-color-a" min="0" max="1" step="0.01" value="${color.a.toFixed(2)}" data-index="${index}" placeholder="A">
+                    </div>
+                    <button class="palette-delete-btn" data-index="${index}">×</button>
+                `;
+            } else {
+                // Collapsed view - just swatch
+                colorItem.innerHTML = `
+                    <div class="palette-color-preview" style="background-color: rgba(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}, ${color.a})"></div>
+                `;
+            }
+            
+            // Select color
+            colorItem.addEventListener('click', (e) => {
+                if (!e.target.closest('input') && !e.target.closest('button')) {
+                    this.selectColor(index);
+                }
+            });
+            
+            if (this.expanded) {
+                // Update color values
+                const rInput = colorItem.querySelector('.palette-color-r');
+                const gInput = colorItem.querySelector('.palette-color-g');
+                const bInput = colorItem.querySelector('.palette-color-b');
+                const aInput = colorItem.querySelector('.palette-color-a');
+                
+                rInput.addEventListener('change', () => {
+                    this.colors[index].r = Math.max(0, Math.min(1, parseFloat(rInput.value) || 0));
+                    this.updateColorPreview(colorItem, index);
+                    this.saveState();
+                });
+                
+                gInput.addEventListener('change', () => {
+                    this.colors[index].g = Math.max(0, Math.min(1, parseFloat(gInput.value) || 0));
+                    this.updateColorPreview(colorItem, index);
+                    this.saveState();
+                });
+                
+                bInput.addEventListener('change', () => {
+                    this.colors[index].b = Math.max(0, Math.min(1, parseFloat(bInput.value) || 0));
+                    this.updateColorPreview(colorItem, index);
+                    this.saveState();
+                });
+                
+                aInput.addEventListener('change', () => {
+                    this.colors[index].a = Math.max(0, Math.min(1, parseFloat(aInput.value) || 0));
+                    this.updateColorPreview(colorItem, index);
+                    this.saveState();
+                });
+                
+                // Delete color
+                const deleteBtn = colorItem.querySelector('.palette-delete-btn');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.deleteColor(index);
+                });
+            }
+            
+            colorsContainer.appendChild(colorItem);
+        });
+    }
+
+    updateColorPreview(colorItem, index) {
+        const color = this.colors[index];
+        const preview = colorItem.querySelector('.palette-color-preview');
+        preview.style.backgroundColor = `rgba(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}, ${color.a})`;
+    }
+
+    selectColor(index) {
+        this.selectedColorIndex = index;
+        this.renderColors();
+    }
+
+    getSelectedColor() {
+        if (this.colors.length === 0) return { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+        const color = this.colors[this.selectedColorIndex];
+        // Return as 0-255 for drawing (WebGL expects 0-255)
+        return {
+            r: Math.round(color.r * 255),
+            g: Math.round(color.g * 255),
+            b: Math.round(color.b * 255),
+            a: Math.round(color.a * 255)
+        };
+    }
+
+    addColor() {
+        this.colors.push({ r: 0.5, g: 0.5, b: 0.5, a: 1.0 });
+        this.selectedColorIndex = this.colors.length - 1;
+        this.renderColors();
+        this.saveState();
+    }
+
+    deleteColor(index) {
+        if (this.colors.length <= 1) return; // Keep at least one color
+        this.colors.splice(index, 1);
+        if (this.selectedColorIndex >= this.colors.length) {
+            this.selectedColorIndex = this.colors.length - 1;
+        }
+        this.renderColors();
+        this.saveState();
+    }
+
+    saveState() {
+        if (window.app) {
+            window.app.saveState();
         }
     }
 }
