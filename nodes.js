@@ -809,6 +809,34 @@ class ShaderNode extends Node {
                     });
                 }
 
+                // Calculate header line count for line number offset
+                const getHeaderLineCount = () => {
+                    if (!window.app || !window.app.graph) return 6; // Default header lines
+                    const graph = window.app.graph;
+                    const inputNames = {};
+                    const connectedPorts = new Set();
+                    
+                    const incomingEdges = graph.getEdgesTo(this);
+                    for (const edge of incomingEdges) {
+                        const toPort = edge.toPort;
+                        connectedPorts.add(toPort);
+                        const sourceNode = edge.from;
+                        if (sourceNode.type === 'texture-buffer') {
+                            inputNames[toPort] = sourceNode.name;
+                        } else {
+                            inputNames[toPort] = `input${toPort}`;
+                        }
+                    }
+                    
+                    const sortedPorts = Array.from(connectedPorts).sort((a, b) => a - b);
+                    const inputDeclCount = sortedPorts.length;
+                    
+                    // Header lines: #version, precision, uniform t, uniform seed, input declarations, in vec2, out vec4
+                    return 6 + inputDeclCount;
+                };
+                
+                const headerLineCount = getHeaderLineCount();
+                
                 this.monacoEditor = monaco.editor.create(editorContainer, {
                     value: 'float r(float n){return fract(sin(dot(v_texCoord+n,vec2(12.9898,78.233)))*43758.5453);}vec4 compute() {return vec4(r(0.0),r(0.1),r(0.2),1);}',
                     language: 'glsl',
@@ -816,7 +844,11 @@ class ShaderNode extends Node {
                     fontSize: 12,
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
-                    automaticLayout: true
+                    automaticLayout: true,
+                    lineNumbers: (lineNumber) => {
+                        // Offset line numbers to account for header (add 1 for compiler error messages)
+                        return (lineNumber + headerLineCount + 1).toString();
+                    }
                 });
 
                 this.code = this.monacoEditor.getValue();
@@ -841,6 +873,8 @@ class ShaderNode extends Node {
                 // Update header after Monaco is initialized
                 if (window.app && window.app.graph) {
                     this.updateHeader(window.app.graph);
+                    // Update line number offset when header changes
+                    this.updateLineNumberOffset();
                 }
             } catch (error) {
                 console.error('Error creating Monaco editor:', error);
@@ -867,6 +901,39 @@ class ShaderNode extends Node {
             // Wait for Monaco to load
             setTimeout(() => this.initMonaco(), 100);
         }
+    }
+
+    updateLineNumberOffset() {
+        if (!this.monacoEditor) return;
+        
+        const graph = window.app ? window.app.graph : null;
+        const inputNames = {};
+        const connectedPorts = new Set();
+        
+        if (graph) {
+            const incomingEdges = graph.getEdgesTo(this);
+            for (const edge of incomingEdges) {
+                const toPort = edge.toPort;
+                connectedPorts.add(toPort);
+                const sourceNode = edge.from;
+                if (sourceNode.type === 'texture-buffer') {
+                    inputNames[toPort] = sourceNode.name;
+                } else {
+                    inputNames[toPort] = `input${toPort}`;
+                }
+            }
+        }
+        
+        const sortedPorts = Array.from(connectedPorts).sort((a, b) => a - b);
+        const inputDeclCount = sortedPorts.length;
+        const headerLineCount = 6 + inputDeclCount; // #version, precision, uniform t, uniform seed, input decls, in vec2, out vec4
+        
+        // Update line number renderer (add 1 for compiler error messages)
+        this.monacoEditor.updateOptions({
+            lineNumbers: (lineNumber) => {
+                return (lineNumber + headerLineCount + 1).toString();
+            }
+        });
     }
 
     updateHeader(graph = null) {
@@ -921,6 +988,9 @@ out vec4 fragColor;
 
         headerTopEl.innerHTML = this.highlightGLSL(topCode);
         headerBottomEl.innerHTML = this.highlightGLSL(bottomCode);
+        
+        // Update line number offset when header changes
+        this.updateLineNumberOffset();
     }
 
     highlightGLSL(code) {
