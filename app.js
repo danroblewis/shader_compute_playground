@@ -37,11 +37,7 @@ class App {
     }
 
     init() {
-        // Setup canvas
-        this.resizeCanvas();
-        window.addEventListener('resize', () => this.resizeCanvas());
-        
-        // Initialize WebGL
+        // Initialize WebGL (canvas only needs to exist for context, doesn't need to be visible or full-screen)
         this.webglManager.init(this.canvas);
         
         // Load saved state now that WebGL is ready
@@ -50,12 +46,13 @@ class App {
         // Setup connection line SVG
         this.setupConnectionLine();
         
-        // Event listeners
-        this.canvas.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
-        this.canvas.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
-        this.canvas.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
-        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-        this.canvas.addEventListener('wheel', (e) => this.onCanvasWheel(e), { passive: false });
+        // Event listeners - use #app div instead of canvas for mouse events
+        const appDiv = document.getElementById('app');
+        appDiv.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
+        appDiv.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
+        appDiv.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
+        appDiv.addEventListener('contextmenu', (e) => e.preventDefault());
+        appDiv.addEventListener('wheel', (e) => this.onCanvasWheel(e), { passive: false });
         
         // Global mouse events for dragging (so dragging works even outside canvas)
         document.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
@@ -72,7 +69,7 @@ class App {
             }
             if (this.panning) {
                 this.panning = false;
-                this.canvas.style.cursor = '';
+                document.getElementById('app').style.cursor = '';
             }
         });
         
@@ -388,13 +385,6 @@ class App {
         }
     }
 
-    resizeCanvas() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-        if (this.webglManager.gl) {
-            this.webglManager.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-        }
-    }
 
     setupConnectionLine() {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -780,7 +770,7 @@ class App {
                 this.panning = true;
                 this.panStart.x = e.clientX;
                 this.panStart.y = e.clientY;
-                this.canvas.style.cursor = 'grabbing';
+                document.getElementById('app').style.cursor = 'grabbing';
                 e.preventDefault();
             } else if (!this.dragging) {
                 this.selectedNode = null;
@@ -857,9 +847,9 @@ class App {
                        e.clientY >= rect.top && e.clientY <= rect.bottom;
             });
             if (!hoveredNode) {
-                this.canvas.style.cursor = 'grab';
+                document.getElementById('app').style.cursor = 'grab';
             } else {
-                this.canvas.style.cursor = '';
+                document.getElementById('app').style.cursor = '';
             }
         }
     }
@@ -913,7 +903,7 @@ class App {
         
         if (this.panning) {
             this.panning = false;
-            this.canvas.style.cursor = '';
+            document.getElementById('app').style.cursor = '';
         }
         
         // Don't cancel connection on canvas mouseup - let port mouseup handle it
@@ -1085,12 +1075,6 @@ class App {
                 node.updatePreview();
             }
         });
-        
-        // Render background
-        const gl = this.webglManager.gl;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-        gl.clear(gl.COLOR_BUFFER_BIT);
         
         requestAnimationFrame(() => this.animate());
     }
