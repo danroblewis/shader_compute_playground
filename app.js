@@ -168,6 +168,7 @@ class App {
                         nodeData.code = node.code || (node.monacoEditor ? node.monacoEditor.getValue() : '');
                         nodeData.inputs = node.inputs.map(inp => ({ name: inp.name, port: inp.port }));
                         nodeData.outputs = node.outputs.map(out => ({ name: out.name, port: out.port }));
+                        nodeData.collapsed = node.collapsed || false;
                     } else if (node.type === 'palette') {
                         nodeData.colors = node.colors;
                         nodeData.selectedColorIndex = node.selectedColorIndex;
@@ -256,6 +257,15 @@ class App {
                             node.updatePorts();
                         } else {
                             node.addOutput('output0');
+                        }
+                        
+                        // Restore collapsed state
+                        if (nodeData.collapsed !== undefined) {
+                            node.collapsed = nodeData.collapsed;
+                            // Update collapse state after a short delay to ensure DOM is ready
+                            setTimeout(() => {
+                                node.updateCollapseState();
+                            }, 100);
                         }
                         
                         // Restore shader code

@@ -529,6 +529,9 @@ class ShaderNode extends Node {
         this.outputTexture = null;
         this.monacoEditor = null;
         this.name = name;
+        this.collapsed = false;
+        this.expandedWidth = 400; // Store expanded width for restoration
+        this.expandedHeight = 500; // Store expanded height for restoration
         
         this.inputs = [];
         this.outputs = [];
@@ -551,13 +554,25 @@ class ShaderNode extends Node {
             </div>
             <div class="node-content shader-node">
                 <div class="shader-header-code" id="shader-header-top-${this.id}"></div>
-                <div class="shader-editor-container">
+                <div class="shader-editor-container" id="shader-editor-container-${this.id}">
                     <div class="shader-editor" id="shader-editor-${this.id}"></div>
                 </div>
                 <div class="shader-header-code" id="shader-header-bottom-${this.id}"></div>
                 <div class="shader-error" id="shader-error-${this.id}" style="display: none;"></div>
             </div>
         `;
+        
+        // Add collapse/expand button to header
+        const header = div.querySelector('.node-header');
+        const collapseBtn = document.createElement('button');
+        collapseBtn.className = 'shader-collapse-btn';
+        collapseBtn.textContent = this.collapsed ? '▶' : '▼';
+        collapseBtn.title = this.collapsed ? 'Expand' : 'Collapse';
+        collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleCollapse();
+        });
+        header.appendChild(collapseBtn);
 
         // Resize handles
         const resizeHandle = document.createElement('div');
@@ -574,6 +589,9 @@ class ShaderNode extends Node {
 
         // Setup resize
         this.setupResize(resizeHandle, resizeHandleS, resizeHandleE);
+        
+        // Update collapse state
+        this.updateCollapseState();
 
         // Make title editable
         const titleEl = div.querySelector(`[data-node-title="${this.id}"]`);
@@ -614,6 +632,56 @@ class ShaderNode extends Node {
         const titleEl = this.element.querySelector(`[data-node-title="${this.id}"]`);
         if (titleEl) {
             titleEl.textContent = name;
+        }
+    }
+    
+    toggleCollapse() {
+        this.collapsed = !this.collapsed;
+        const collapseBtn = this.element.querySelector('.shader-collapse-btn');
+        
+        if (collapseBtn) {
+            collapseBtn.textContent = this.collapsed ? '▶' : '▼';
+            collapseBtn.title = this.collapsed ? 'Expand' : 'Collapse';
+        }
+        
+        this.updateCollapseState();
+        
+        // Save state after collapse toggle
+        if (window.app) {
+            window.app.saveState();
+        }
+    }
+    
+    updateCollapseState() {
+        const editorContainer = this.element.querySelector(`#shader-editor-container-${this.id}`);
+        const headerBottom = this.element.querySelector(`#shader-header-bottom-${this.id}`);
+        
+        if (editorContainer) {
+            editorContainer.style.display = this.collapsed ? 'none' : 'block';
+        }
+        if (headerBottom) {
+            headerBottom.style.display = this.collapsed ? 'none' : 'block';
+        }
+        
+        // Update node size when collapsing/expanding
+        if (this.collapsed) {
+            // Collapsed: just show header, make node smaller and thinner
+            const headerTop = this.element.querySelector(`#shader-header-top-${this.id}`);
+            if (headerTop) {
+                const headerHeight = headerTop.offsetHeight || 60;
+                // Store expanded size before collapsing
+                if (this.particle.width > 250) {
+                    this.expandedWidth = this.particle.width;
+                }
+                if (this.particle.height > 300) {
+                    this.expandedHeight = this.particle.height;
+                }
+                // Collapsed: narrow width (200px) and minimal height
+                this.setSize(200, Math.max(100, headerHeight + 40));
+            }
+        } else {
+            // Expanded: restore to stored expanded size or default
+            this.setSize(this.expandedWidth || 400, this.expandedHeight || 500);
         }
     }
 
