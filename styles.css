@@ -51,6 +51,10 @@ body {
     transition: box-shadow 0.2s;
     min-width: 200px;
     min-height: 100px;
+    box-sizing: border-box;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .node:hover {
@@ -89,23 +93,32 @@ body {
 
 .node-content {
     padding: 12px;
+    flex: 1;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 /* Texture Buffer Node */
 .texture-buffer-node {
     display: flex;
     flex-direction: column;
+    overflow: visible;
 }
 
 .texture-preview-container {
     width: 100%;
     height: 200px;
+    min-height: 200px;
+    max-height: 200px;
     background: #0f0f0f;
     border: 1px solid #333;
     border-radius: 4px;
     overflow: hidden;
     position: relative;
     margin-bottom: 8px;
+    flex-shrink: 0;
 }
 
 .texture-preview-canvas {
@@ -113,6 +126,7 @@ body {
     height: 100%;
     display: block;
     cursor: crosshair;
+    object-fit: contain;
 }
 
 .texture-info {
@@ -130,6 +144,8 @@ body {
     display: flex;
     gap: 8px;
     margin-top: 8px;
+    flex-shrink: 0;
+    visibility: visible;
 }
 
 .btn {
@@ -156,6 +172,9 @@ body {
 .shader-node {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .shader-header-code {
@@ -172,14 +191,24 @@ body {
 .shader-editor-container {
     position: relative;
     min-height: 300px;
+    height: 300px;
+    max-height: 300px;
     border: 1px solid #333;
     border-radius: 4px;
     overflow: hidden;
+    flex: 1;
+    min-height: 0;
 }
 
 .shader-editor {
     width: 100%;
     height: 100%;
+    min-height: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
 }
 
 .resize-handle {

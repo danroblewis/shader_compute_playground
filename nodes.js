@@ -57,6 +57,10 @@ class TextureBufferNode extends Node {
         this.isDrawing = false;
         this.drawContext = null;
         
+        // Set proper size for texture buffer node (needs space for header, preview, and controls)
+        // Header: ~40px, Preview: 200px, Controls: ~40px, Padding: 24px = ~304px minimum
+        this.setSize(200, 320);
+        
         this.inputs = [{ name: 'input', port: 0 }];
         this.outputs = [{ name: 'output', port: 0 }];
         
@@ -85,8 +89,19 @@ class TextureBufferNode extends Node {
         `;
 
         this.previewCanvas = div.querySelector('.texture-preview-canvas');
-        this.previewCanvas.width = 200;
-        this.previewCanvas.height = 200;
+        // Set canvas size to match container (will be updated after container is rendered)
+        const updateCanvasSize = () => {
+            const container = this.previewCanvas.parentElement;
+            if (container) {
+                const rect = container.getBoundingClientRect();
+                this.previewCanvas.width = rect.width;
+                this.previewCanvas.height = rect.height;
+            }
+        };
+        // Update after a short delay to ensure container is rendered
+        setTimeout(updateCanvasSize, 10);
+        // Also update on resize
+        window.addEventListener('resize', updateCanvasSize);
 
         // Ports
         const inputPort = document.createElement('div');
@@ -274,7 +289,8 @@ class ShaderNode extends Node {
         this.outputs = [];
         
         this.createElement();
-        this.initMonaco();
+        // Delay Monaco initialization slightly to ensure DOM is ready
+        setTimeout(() => this.initMonaco(), 50);
     }
 
     createElement() {
@@ -313,30 +329,84 @@ class ShaderNode extends Node {
     }
 
     async initMonaco() {
-        if (typeof monaco === 'undefined') {
+        const editorContainer = this.element.querySelector(`#shader-editor-${this.id}`);
+        if (!editorContainer) {
             setTimeout(() => this.initMonaco(), 100);
             return;
         }
 
-        const editorContainer = this.element.querySelector(`#shader-editor-${this.id}`);
-        if (!editorContainer) return;
+        // Function to actually create the editor
+        const createEditor = () => {
+            // Ensure container has dimensions - wait for it to be visible
+            const container = editorContainer.parentElement;
+            if (!container) {
+                setTimeout(() => this.initMonaco(), 100);
+                return;
+            }
+            
+            // Force a layout calculation
+            const rect = container.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) {
+                setTimeout(() => this.initMonaco(), 100);
+                return;
+            }
 
-        this.monacoEditor = monaco.editor.create(editorContainer, {
-            value: 'vec4 output() {\n    return vec4(1.0, 0.0, 0.0, 1.0);\n}',
-            language: 'glsl',
-            theme: 'vs-dark',
-            fontSize: 12,
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            automaticLayout: true
-        });
+            // Ensure editor container has proper dimensions
+            const editorRect = editorContainer.getBoundingClientRect();
+            if (editorRect.width === 0 || editorRect.height === 0) {
+                setTimeout(() => this.initMonaco(), 100);
+                return;
+            }
 
-        this.monacoEditor.onDidChangeModelContent(() => {
-            this.code = this.monacoEditor.getValue();
-            this.updateHeader();
-        });
+            try {
+                if (this.monacoEditor) {
+                    // Editor already exists, don't create again
+                    return;
+                }
 
-        this.updateHeader();
+                this.monacoEditor = monaco.editor.create(editorContainer, {
+                    value: 'vec4 output() {\n    return vec4(1.0, 0.0, 0.0, 1.0);\n}',
+                    language: 'glsl',
+                    theme: 'vs-dark',
+                    fontSize: 12,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true
+                });
+
+                this.code = this.monacoEditor.getValue();
+
+                this.monacoEditor.onDidChangeModelContent(() => {
+                    this.code = this.monacoEditor.getValue();
+                    this.updateHeader();
+                });
+
+                this.updateHeader();
+            } catch (error) {
+                console.error('Error creating Monaco editor:', error);
+                setTimeout(() => this.initMonaco(), 200);
+            }
+        };
+
+        // Check if Monaco is already available
+        if (typeof monaco !== 'undefined' && monaco.editor) {
+            createEditor();
+        } else if (typeof require !== 'undefined') {
+            // Use loader to load Monaco
+            require(['vs/editor/editor.main'], () => {
+                if (typeof monaco !== 'undefined' && monaco.editor) {
+                    createEditor();
+                } else {
+                    setTimeout(() => this.initMonaco(), 200);
+                }
+            }, (error) => {
+                console.error('Error loading Monaco:', error);
+                setTimeout(() => this.initMonaco(), 200);
+            });
+        } else {
+            // Wait for Monaco to load
+            setTimeout(() => this.initMonaco(), 100);
+        }
     }
 
     updateHeader() {

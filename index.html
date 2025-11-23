@@ -13,7 +13,11 @@
     </div>
     
     <!-- Monaco Editor -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <script>
+        // Configure Monaco Editor loader before loading
+        window.require = { paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js" onload="window.monacoReady = true"></script>
     
     <script src="physics.js"></script>
     <script src="webgl-manager.js"></script>
