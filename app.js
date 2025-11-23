@@ -27,6 +27,9 @@ class App {
         this.paused = false;
         this.paletteNode = null;
         this.connectionsNeedUpdate = true; // Track if connections need visual update
+        this.evaluationSpeedLimit = 0; // 0 = unlimited, >0 = minimum ms between evaluations
+        this.lastPreviewUpdate = 0;
+        this.previewUpdateInterval = 1000 / 60; // 60 FPS for previews (16.67ms)
         
         // FPS tracking
         this.fps = 0;
@@ -82,8 +85,8 @@ class App {
         // Physics and render loop
         this.animate();
         
-        // Graph evaluation loop
-        this.evaluateGraph();
+        // Graph evaluation loop - runs as fast as possible, independently
+        this.evaluateGraphLoop();
         
         // Set up auto-save
         this.setupAutoSave();
@@ -1083,17 +1086,21 @@ class App {
         // Update connections
         this.updateConnections();
         
-        // Update texture buffer previews every frame for 60 FPS
-        this.nodes.forEach(node => {
-            if (node.type === 'texture-buffer') {
-                node.updatePreview();
-            }
-        });
+        // Update texture buffer previews at 60 FPS (throttled)
+        const previewNow = performance.now();
+        if (previewNow - this.lastPreviewUpdate >= this.previewUpdateInterval) {
+            this.nodes.forEach(node => {
+                if (node.type === 'texture-buffer') {
+                    node.updatePreview();
+                }
+            });
+            this.lastPreviewUpdate = previewNow;
+        }
         
         requestAnimationFrame(() => this.animate());
     }
 
-    evaluateGraph() {
+    evaluateGraphLoop() {
         if (!this.paused) {
             // Check if physics has settled
             const settled = this.physics.particles.every(p => 
@@ -1101,12 +1108,19 @@ class App {
             );
 
             if (settled) {
+                // Run graph evaluation as fast as possible
                 this.graph.evaluate(this.webglManager, this.iteration);
                 this.iteration++;
             }
         }
         
-        setTimeout(() => this.evaluateGraph(), 100);
+        // Continue loop as fast as possible (or with speed limit if set)
+        if (this.evaluationSpeedLimit > 0) {
+            setTimeout(() => this.evaluateGraphLoop(), this.evaluationSpeedLimit);
+        } else {
+            // Use setTimeout(0) to run as fast as possible without blocking
+            setTimeout(() => this.evaluateGraphLoop(), 0);
+        }
     }
 }
 

@@ -259,17 +259,19 @@ class WebGLManager {
         if (!canvas._renderTargetFBO) {
             canvas._renderTargetFBO = gl.createFramebuffer();
             canvas._renderTargetTexture = gl.createTexture();
+            canvas._renderTargetWidth = 0;
+            canvas._renderTargetHeight = 0;
         }
         
         const renderTargetFBO = canvas._renderTargetFBO;
         const renderTargetTexture = canvas._renderTargetTexture;
         
         // Resize render target if canvas size changed
-        gl.bindTexture(gl.TEXTURE_2D, renderTargetTexture);
-        const currentWidth = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WIDTH) || 0;
-        const currentHeight = gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_HEIGHT) || 0;
-        if (currentWidth !== width || currentHeight !== height) {
+        if (canvas._renderTargetWidth !== width || canvas._renderTargetHeight !== height) {
+            gl.bindTexture(gl.TEXTURE_2D, renderTargetTexture);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            canvas._renderTargetWidth = width;
+            canvas._renderTargetHeight = height;
         }
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
