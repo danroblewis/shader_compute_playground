@@ -36,6 +36,11 @@ class App {
         this.frameCount = 0;
         this.lastFpsUpdate = performance.now();
         
+        // Graph evaluation FPS tracking
+        this.evaluationFps = 0;
+        this.evaluationFrameCount = 0;
+        this.lastEvaluationFpsUpdate = performance.now();
+        
         this.init();
     }
 
@@ -96,12 +101,28 @@ class App {
     }
 
     createPauseButton() {
-        // Create container for pause button
+        // Create container for pause button and FPS display
         const container = document.createElement('div');
         container.style.position = 'fixed';
         container.style.top = '20px';
         container.style.right = '20px';
         container.style.zIndex = '1000';
+        container.style.display = 'flex';
+        container.style.gap = '10px';
+        container.style.alignItems = 'center';
+        
+        // Create evaluation FPS display
+        const fpsDisplay = document.createElement('div');
+        fpsDisplay.id = 'evaluation-fps';
+        fpsDisplay.textContent = 'Eval: 0 FPS';
+        fpsDisplay.style.padding = '10px 15px';
+        fpsDisplay.style.background = '#1a1a1a';
+        fpsDisplay.style.border = '1px solid #444';
+        fpsDisplay.style.borderRadius = '4px';
+        fpsDisplay.style.color = '#aaa';
+        fpsDisplay.style.fontSize = '12px';
+        fpsDisplay.style.fontFamily = 'monospace';
+        this.evaluationFpsDisplay = fpsDisplay;
         
         // Create pause button
         const button = document.createElement('button');
@@ -127,6 +148,7 @@ class App {
             this.togglePause();
         });
         
+        container.appendChild(fpsDisplay);
         container.appendChild(button);
         document.body.appendChild(container);
         this.pauseButton = button;
@@ -1134,6 +1156,22 @@ class App {
                 // Run graph evaluation as fast as possible
                 this.graph.evaluate(this.webglManager, this.iteration);
                 this.iteration++;
+                
+                // Track evaluation FPS
+                this.evaluationFrameCount++;
+                const now = performance.now();
+                const elapsed = now - this.lastEvaluationFpsUpdate;
+                
+                if (elapsed >= 1000) { // Update FPS every second
+                    this.evaluationFps = Math.round((this.evaluationFrameCount * 1000) / elapsed);
+                    this.evaluationFrameCount = 0;
+                    this.lastEvaluationFpsUpdate = now;
+                    
+                    // Update FPS display
+                    if (this.evaluationFpsDisplay) {
+                        this.evaluationFpsDisplay.textContent = `Eval: ${this.evaluationFps} FPS`;
+                    }
+                }
             }
         }
         
