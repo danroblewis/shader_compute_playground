@@ -471,20 +471,11 @@ class App {
         const header = node.element.querySelector('.node-header');
         if (!header) return;
 
-        // Drag
-        header.addEventListener('mousedown', (e) => {
-            if (e.target.closest('.port')) return;
-            // Don't start drag if clicking on editable title
-            if (e.target.contentEditable === 'true') return;
-            if (e.button === 0) { // Only left mouse button
-                this.startDrag(node, e);
-                e.stopPropagation();
-            }
-        });
-
-        // Port connections - use event delegation so dynamically added ports work
+        // Unified mousedown handler for drag, port connections, and selection
         node.element.addEventListener('mousedown', (e) => {
             const port = e.target.closest('.port');
+            
+            // Handle port connections first
             if (port) {
                 // Right-click on input port to delete connection
                 if (e.button === 2 && port.classList.contains('input')) {
@@ -493,7 +484,27 @@ class App {
                     e.stopPropagation();
                     return;
                 }
-                this.startConnection(node, port, e);
+                // Start connection on left-click
+                if (e.button === 0) {
+                    this.startConnection(node, port, e);
+                    e.stopPropagation();
+                }
+                return;
+            }
+            
+            // Don't drag if clicking on interactive elements
+            if (e.target.closest('button')) return;
+            if (e.target.closest('canvas')) return;
+            if (e.target.closest('.monaco-editor')) return;
+            if (e.target.closest('.monaco-editor-container')) return;
+            if (e.target.closest('textarea')) return;
+            if (e.target.closest('input')) return;
+            // Don't start drag if clicking on editable title
+            if (e.target.contentEditable === 'true') return;
+            
+            // Drag from anywhere on node body (not just header)
+            if (e.button === 0) { // Only left mouse button
+                this.startDrag(node, e);
                 e.stopPropagation();
             }
         });
@@ -550,13 +561,6 @@ class App {
         });
         
         observer.observe(node.element, { childList: true, subtree: true });
-
-        // Selection
-        node.element.addEventListener('mousedown', (e) => {
-            if (!e.target.closest('.port') && !e.target.closest('.node-header')) {
-                this.selectNode(node);
-            }
-        });
     }
 
     startDrag(node, e) {

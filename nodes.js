@@ -280,10 +280,19 @@ class TextureBufferNode extends Node {
         // Flip y coordinate: canvas has (0,0) at top-left, WebGL textures have (0,0) at bottom-left
         const py = Math.max(0, Math.min(this.textureHeight - 1, this.textureHeight - 1 - Math.floor(y * this.textureHeight)));
 
-        // Get color from palette (already converted to 0-255 range)
-        let color = { r: 255, g: 255, b: 255, a: 255 };
+        // Get color from palette (converted to 0-255 range for texSubImage2D with UNSIGNED_BYTE)
+        let color;
         if (window.app && window.app.paletteNode) {
             color = window.app.paletteNode.getSelectedColor();
+        } else {
+            // Default white color (1.0 normalized, convert to 0-255 for UNSIGNED_BYTE)
+            const defaultColor = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+            color = {
+                r: Math.round(defaultColor.r * 255),
+                g: Math.round(defaultColor.g * 255),
+                b: Math.round(defaultColor.b * 255),
+                a: Math.round(defaultColor.a * 255)
+            };
         }
 
         // Draw a small brush (3x3 pixels)
@@ -1368,7 +1377,7 @@ class PaletteNode extends Node {
     getSelectedColor() {
         if (this.colors.length === 0) return { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
         const color = this.colors[this.selectedColorIndex];
-        // Return as 0-255 for drawing (WebGL expects 0-255)
+        // Return as 0-255 for texSubImage2D with UNSIGNED_BYTE format (which expects byte values 0-255)
         return {
             r: Math.round(color.r * 255),
             g: Math.round(color.g * 255),

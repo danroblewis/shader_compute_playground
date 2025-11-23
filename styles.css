@@ -56,6 +56,18 @@ body {
     display: flex;
     flex-direction: column;
     z-index: 1;
+    cursor: move;
+    user-select: none;
+}
+
+/* Reset cursor for interactive elements inside nodes */
+.node button,
+.node canvas,
+.node textarea,
+.node input,
+.node .monaco-editor,
+.node .monaco-editor-container {
+    cursor: default;
 }
 
 .node:hover {
@@ -76,7 +88,6 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    cursor: move;
     user-select: none;
 }
 
