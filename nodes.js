@@ -810,7 +810,7 @@ class ShaderNode extends Node {
                 }
 
                 this.monacoEditor = monaco.editor.create(editorContainer, {
-                    value: 'vec4 compute() {\n    return vec4(1.0, 0.0, 0.0, 1.0);\n}',
+                    value: 'float r(float n){return fract(sin(dot(v_texCoord+n,vec2(12.9898,78.233)))*43758.5453);}vec4 compute() {return vec4(r(0.0),r(0.1),r(0.2),1);}',
                     language: 'glsl',
                     theme: 'vs-dark',
                     fontSize: 12,
